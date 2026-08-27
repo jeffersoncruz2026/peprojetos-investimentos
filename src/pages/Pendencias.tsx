@@ -24,19 +24,8 @@ import {
   vincularItemEmLote,
 } from "@/lib/api";
 import { dataBr, mensagemErro, moeda } from "@/lib/format";
-import type { Atividade } from "@/lib/types";
+import { ATIVIDADES } from "@/lib/types";
 import { supabaseConfigured } from "@/lib/supabaseClient";
-
-const ATIVIDADES: Atividade[] = [
-  "SERINGUEIRA",
-  "PECUARIA",
-  "AGRICOLA",
-  "ADMINISTRACAO",
-  "OFICINA",
-  "VEICULOS E MECANIZADOS",
-  "VENDA DE VEICULOS",
-  "CUSTEIO",
-];
 
 export default function Pendencias() {
   const { isGestor } = useAuth();

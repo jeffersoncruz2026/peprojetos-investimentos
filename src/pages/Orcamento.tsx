@@ -24,6 +24,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSafra } from "@/hooks/useSafra";
 import { useToast } from "@/hooks/use-toast";
 import {
+  criarCentroCusto,
   criarItemOrcamento,
   fetchCentrosCusto,
   fetchItensOrcamentoPorSafra,
@@ -31,7 +32,8 @@ import {
 } from "@/lib/api";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
 import { competenciaLabel, competenciasSafra, mensagemErro, moeda } from "@/lib/format";
-import type { CentroCusto } from "@/lib/types";
+import { ATIVIDADES, type CentroCusto } from "@/lib/types";
+import { ImportarOrcamentoDialog } from "@/components/ImportarOrcamentoDialog";
 
 interface PendingEdit {
   itemOrcamentoId: string;
@@ -169,11 +171,14 @@ export default function Orcamento() {
           <p className="text-sm text-muted-foreground">Grade editável do orçado mês a mês</p>
         </div>
         {editavel && (
-          <NovoItemOrcamento
-            safraId={safraId}
-            primeiraCompetencia={competencias[0]}
-            centros={centros.data ?? []}
-          />
+          <div className="flex flex-wrap gap-2">
+            <ImportarOrcamentoDialog safraId={safraId} centros={centros.data ?? []} itens={itens.data ?? []} />
+            <NovoItemOrcamento
+              safraId={safraId}
+              primeiraCompetencia={competencias[0]}
+              centros={centros.data ?? []}
+            />
+          </div>
         )}
       </div>
 
@@ -301,28 +306,48 @@ function NovoItemOrcamento({
   const [centroCustoId, setCentroCustoId] = useState("");
   const [valor, setValor] = useState("");
 
+  const [novaArea, setNovaArea] = useState(false);
+  const [novaAreaCodigo, setNovaAreaCodigo] = useState("");
+  const [novaAreaNome, setNovaAreaNome] = useState("");
+  const [novaAreaAtividade, setNovaAreaAtividade] = useState<string>("ADMINISTRACAO");
+
   function limpar() {
     setCodccusto("");
     setNomecusto("");
     setCentroCustoId("");
     setValor("");
+    setNovaArea(false);
+    setNovaAreaCodigo("");
+    setNovaAreaNome("");
+    setNovaAreaAtividade("ADMINISTRACAO");
   }
 
   const criar = useMutation({
-    mutationFn: () =>
-      criarItemOrcamento({
+    mutationFn: async () => {
+      let ccId = centroCustoId;
+      if (novaArea) {
+        const cc = await criarCentroCusto({
+          codigoRm: novaAreaCodigo.trim(),
+          nome: novaAreaNome.trim(),
+          atividade: novaAreaAtividade,
+        });
+        ccId = cc.id;
+      }
+      await criarItemOrcamento({
         safraId,
         codigoRmProjeto: codccusto.trim(),
         descricao: nomecusto.trim(),
-        centroCustoId,
+        centroCustoId: ccId,
         competencia: primeiraCompetencia!,
         valor: Number(valor.replace(/\./g, "").replace(",", ".")) || 0,
-      }),
+      });
+    },
     onSuccess: () => {
       toast({ title: "Item de orçamento cadastrado." });
       setOpen(false);
       limpar();
       qc.invalidateQueries({ queryKey: ["itens-orcamento", safraId] });
+      qc.invalidateQueries({ queryKey: ["centros-custo"] });
       qc.invalidateQueries({ queryKey: ["item-acumulado"] });
       qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
       qc.invalidateQueries({ queryKey: ["curva-mensal"] });
@@ -332,8 +357,11 @@ function NovoItemOrcamento({
       toast({ title: "Erro ao cadastrar", description: mensagemErro(e), variant: "destructive" }),
   });
 
+  const areaPreenchida = novaArea
+    ? novaAreaCodigo.trim() && novaAreaNome.trim()
+    : Boolean(centroCustoId);
   const podeSalvar =
-    codccusto.trim() && nomecusto.trim() && centroCustoId && valor.trim() && Boolean(primeiraCompetencia);
+    codccusto.trim() && nomecusto.trim() && areaPreenchida && valor.trim() && Boolean(primeiraCompetencia);
 
   function handleOpenChange(v: boolean) {
     setOpen(v);
@@ -369,19 +397,59 @@ function NovoItemOrcamento({
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Área (centro de custo) *</label>
-            <Select value={centroCustoId} onValueChange={setCentroCustoId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a fazenda/unidade" />
-              </SelectTrigger>
-              <SelectContent>
-                {centros.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.nome} — {c.atividade}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">Área (centro de custo) *</label>
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => setNovaArea((v) => !v)}
+              >
+                {novaArea ? "Selecionar unidade existente" : "Não encontrou? Cadastrar nova"}
+              </button>
+            </div>
+            {novaArea ? (
+              <div className="space-y-2 mt-1">
+                <Input
+                  placeholder="Código RM da unidade (ex.: 001.02.01.010)"
+                  value={novaAreaCodigo}
+                  onChange={(e) => setNovaAreaCodigo(e.target.value)}
+                />
+                <Input
+                  placeholder="Nome da fazenda/unidade"
+                  value={novaAreaNome}
+                  onChange={(e) => setNovaAreaNome(e.target.value)}
+                />
+                <Select value={novaAreaAtividade} onValueChange={setNovaAreaAtividade}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ATIVIDADES.map((a) => (
+                      <SelectItem key={a} value={a}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : centros.length === 0 ? (
+              <p className="text-xs text-muted-foreground mt-1">
+                Nenhuma unidade cadastrada ainda — clique em "Cadastrar nova" acima.
+              </p>
+            ) : (
+              <Select value={centroCustoId} onValueChange={setCentroCustoId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a fazenda/unidade" />
+                </SelectTrigger>
+                <SelectContent>
+                  {centros.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nome} — {c.atividade}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground">Valor orçado *</label>

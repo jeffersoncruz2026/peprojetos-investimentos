@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { normalizeHeader, parseDataCell, parseValorCell } from "@/lib/xlsxCell";
 
 // Formato real exportado do TOTVS RM (planilha de custos por centro de
 // custo/projeto): ROWL, DATA, CODCCUSTO, NOMECUSTO, CONTA_CONTABIL,
@@ -24,7 +25,7 @@ export interface LinhaRealizadoPreview extends LinhaRealizadoBruta {
   situacao: "NOVA" | "DUPLICADA" | "SEM_ITEM";
 }
 
-const HEADER_ALIASES: Record<string, keyof LinhaRealizadoBruta> = {
+const HEADER_ALIASES_RAW: Record<string, keyof LinhaRealizadoBruta> = {
   data: "data",
   codccusto: "codigoProjeto",
   "cod ccusto": "codigoProjeto",
@@ -42,32 +43,9 @@ const HEADER_ALIASES: Record<string, keyof LinhaRealizadoBruta> = {
   valor: "valor",
 };
 
-function excelSerialToIso(serial: number): string {
-  const date = XLSX.SSF.parse_date_code(serial);
-  const mm = String(date.m).padStart(2, "0");
-  const dd = String(date.d).padStart(2, "0");
-  return `${date.y}-${mm}-${dd}`;
-}
-
-function parseDataCell(v: unknown): string {
-  if (v instanceof Date) {
-    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
-  }
-  if (typeof v === "number") return excelSerialToIso(v);
-  const s = String(v ?? "").trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-  return s;
-}
-
-function parseValorCell(v: unknown): number {
-  if (typeof v === "number") return v;
-  const s = String(v ?? "").trim();
-  if (!s) return 0;
-  const normalizado = s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s;
-  return Number(normalizado) || 0;
-}
+const HEADER_ALIASES: Record<string, keyof LinhaRealizadoBruta> = Object.fromEntries(
+  Object.entries(HEADER_ALIASES_RAW).map(([k, v]) => [normalizeHeader(k), v])
+);
 
 export async function parseArquivoRealizado(file: File): Promise<LinhaRealizadoBruta[]> {
   const buffer = await file.arrayBuffer();
@@ -79,7 +57,7 @@ export async function parseArquivoRealizado(file: File): Promise<LinhaRealizadoB
     .map((row) => {
       const normalized: Partial<LinhaRealizadoBruta> = {};
       for (const [rawKey, rawValue] of Object.entries(row)) {
-        const key = HEADER_ALIASES[rawKey.trim().toLowerCase()];
+        const key = HEADER_ALIASES[normalizeHeader(rawKey)];
         if (!key) continue;
         if (key === "data") normalized.data = parseDataCell(rawValue);
         else if (key === "valor") normalized.valor = parseValorCell(rawValue);

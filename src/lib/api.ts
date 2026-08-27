@@ -137,6 +137,40 @@ export async function fetchItensComCodigoProjeto(safraId: string): Promise<ItemC
   return (data ?? []) as ItemComCodigoProjeto[];
 }
 
+export async function criarItemOrcamentoComMeses(params: {
+  safraId: string;
+  codigo: string;
+  codigoRmProjeto: string | null;
+  descricao: string;
+  centroCustoId: string;
+  meses: { competencia: string; valor: number }[];
+}): Promise<void> {
+  const { data: item, error: itemError } = await supabase
+    .from("item_orcamento")
+    .insert({
+      codigo: params.codigo,
+      codigo_rm_projeto: params.codigoRmProjeto,
+      safra_id: params.safraId,
+      centro_custo_id: params.centroCustoId,
+      descricao: params.descricao,
+    })
+    .select()
+    .single();
+  if (itemError) throw itemError;
+
+  const somaPorMes = new Map<string, number>();
+  for (const m of params.meses) {
+    somaPorMes.set(m.competencia, (somaPorMes.get(m.competencia) ?? 0) + m.valor);
+  }
+  const linhas = [...somaPorMes.entries()].map(([competencia, valor]) => ({
+    item_orcamento_id: item.id,
+    competencia,
+    valor,
+  }));
+  const { error: mensalError } = await supabase.from("orcamento_mensal").insert(linhas);
+  if (mensalError) throw mensalError;
+}
+
 export async function criarItemOrcamento(params: {
   safraId: string;
   codigoRmProjeto: string;
@@ -157,25 +191,14 @@ export async function criarItemOrcamento(params: {
     );
   }
 
-  const { data: item, error: itemError } = await supabase
-    .from("item_orcamento")
-    .insert({
-      codigo: params.codigoRmProjeto,
-      codigo_rm_projeto: params.codigoRmProjeto,
-      safra_id: params.safraId,
-      centro_custo_id: params.centroCustoId,
-      descricao: params.descricao,
-    })
-    .select()
-    .single();
-  if (itemError) throw itemError;
-
-  const { error: mensalError } = await supabase.from("orcamento_mensal").insert({
-    item_orcamento_id: item.id,
-    competencia: params.competencia,
-    valor: params.valor,
+  await criarItemOrcamentoComMeses({
+    safraId: params.safraId,
+    codigo: params.codigoRmProjeto,
+    codigoRmProjeto: params.codigoRmProjeto,
+    descricao: params.descricao,
+    centroCustoId: params.centroCustoId,
+    meses: [{ competencia: params.competencia, valor: params.valor }],
   });
-  if (mensalError) throw mensalError;
 }
 
 export async function fetchOrcamentoMensalPorItens(itemIds: string[]): Promise<OrcamentoMensal[]> {
@@ -225,17 +248,26 @@ interface NovaLinhaRealizado {
   item_orcamento_id: string | null;
 }
 
+export async function criarCentroCusto(params: {
+  codigoRm: string;
+  nome: string;
+  atividade: string;
+}): Promise<CentroCusto> {
+  const { data, error } = await supabase
+    .from("centro_custo")
+    .insert({ codigo_rm: params.codigoRm, nome: params.nome, atividade: params.atividade })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as CentroCusto;
+}
+
 export async function criarCentroCustoEReprocessar(params: {
   codigoRm: string;
   nome: string;
   atividade: string;
 }): Promise<void> {
-  const { data: cc, error: ccError } = await supabase
-    .from("centro_custo")
-    .insert({ codigo_rm: params.codigoRm, nome: params.nome, atividade: params.atividade })
-    .select()
-    .single();
-  if (ccError) throw ccError;
+  const cc = await criarCentroCusto(params);
 
   const { error: updateError } = await supabase
     .from("realizado")
