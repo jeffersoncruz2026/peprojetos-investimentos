@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSafra } from "@/hooks/useSafra";
 import { useToast } from "@/hooks/use-toast";
 import {
+  aprenderCodigoProjeto,
   criarCentroCustoEReprocessar,
   fetchItensOrcamentoPorSafra,
   fetchPendencias,
@@ -201,13 +202,29 @@ function AbaItem() {
     [linhas, selecionados]
   );
 
+  const codigosProjetoSelecionados = useMemo(
+    () => new Set(linhas.filter((l) => selecionados.has(l.id)).map((l) => l.codigo_cc_origem)),
+    [linhas, selecionados]
+  );
+
   const vincular = useMutation({
-    mutationFn: () => vincularItemEmLote(Array.from(selecionados), itemAlvo),
+    mutationFn: async () => {
+      const itemDestino = (itens.data ?? []).find((i) => i.id === itemAlvo);
+      if (!itemDestino) throw new Error("Item de destino não encontrado.");
+      await vincularItemEmLote(Array.from(selecionados), itemAlvo, itemDestino.centro_custo_id);
+      // Se todos os lançamentos selecionados vêm do mesmo projeto do RM,
+      // aprende o vínculo para as próximas importações casarem sozinhas.
+      if (codigosProjetoSelecionados.size === 1) {
+        await aprenderCodigoProjeto(itemAlvo, [...codigosProjetoSelecionados][0]);
+      }
+    },
     onSuccess: () => {
       toast({ title: `${selecionados.size} lançamento(s) vinculado(s).` });
       setSelecionados(new Set());
       qc.invalidateQueries({ queryKey: ["pendencias"] });
       qc.invalidateQueries({ queryKey: ["item-acumulado"] });
+      qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
+      qc.invalidateQueries({ queryKey: ["itens-com-codigo-projeto"] });
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -233,6 +250,13 @@ function AbaItem() {
             <p className="text-sm font-medium">
               {selecionados.size} selecionado(s) · {moeda(valorSelecionado)}
             </p>
+            {selecionados.size > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {codigosProjetoSelecionados.size === 1
+                  ? "Mesmo projeto do RM — o vínculo será lembrado para as próximas importações."
+                  : "Projetos diferentes selecionados — o vínculo não será lembrado automaticamente."}
+              </p>
+            )}
           </div>
           <Input
             placeholder="Buscar item por código ou descrição..."
@@ -268,7 +292,7 @@ function AbaItem() {
               <TableRow>
                 <TableHead className="w-10" />
                 <TableHead>Data</TableHead>
-                <TableHead>CC origem</TableHead>
+                <TableHead>Projeto (RM)</TableHead>
                 <TableHead>Conta</TableHead>
                 <TableHead>Documento</TableHead>
                 <TableHead>Histórico</TableHead>

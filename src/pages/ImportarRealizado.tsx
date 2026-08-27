@@ -8,9 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { useSafra } from "@/hooks/useSafra";
 import { useToast } from "@/hooks/use-toast";
-import { fetchCentrosCusto, fetchChavesExistentes, confirmarImportacao } from "@/lib/api";
+import { fetchChavesExistentes, fetchItensComCodigoProjeto, confirmarImportacao } from "@/lib/api";
 import {
-  montarChaveRm,
+  montarChavesRm,
   parseArquivoRealizado,
   primeiroDiaDoMes,
   type LinhaRealizadoPreview,
@@ -19,15 +19,15 @@ import { dataBr, moeda } from "@/lib/format";
 import { supabaseConfigured } from "@/lib/supabaseClient";
 
 const SITUACAO_LABEL: Record<LinhaRealizadoPreview["situacao"], string> = {
-  NOVA: "Nova",
+  NOVA: "Vinculada",
   DUPLICADA: "Duplicada",
-  SEM_CENTRO_CUSTO: "Sem centro de custo",
+  SEM_ITEM: "Sem item vinculado",
 };
 
 const SITUACAO_VARIANT: Record<LinhaRealizadoPreview["situacao"], "default" | "secondary" | "destructive"> = {
   NOVA: "default",
   DUPLICADA: "secondary",
-  SEM_CENTRO_CUSTO: "destructive",
+  SEM_ITEM: "destructive",
 };
 
 export default function ImportarRealizado() {
@@ -41,9 +41,9 @@ export default function ImportarRealizado() {
   const [preview, setPreview] = useState<LinhaRealizadoPreview[] | null>(null);
   const [processando, setProcessando] = useState(false);
 
-  const centros = useQuery({
-    queryKey: ["centros-custo"],
-    queryFn: fetchCentrosCusto,
+  const itensComProjeto = useQuery({
+    queryKey: ["itens-com-codigo-projeto", safraId],
+    queryFn: () => fetchItensComCodigoProjeto(safraId),
     enabled: supabaseConfigured,
   });
 
@@ -52,25 +52,26 @@ export default function ImportarRealizado() {
     setArquivoNome(file.name);
     try {
       const brutas = await parseArquivoRealizado(file);
-      const codigoParaId = new Map((centros.data ?? []).map((c) => [c.codigo_rm, c.id]));
+      const projetoParaItem = new Map(
+        (itensComProjeto.data ?? []).map((i) => [i.codigo_rm_projeto, i])
+      );
 
-      const chaves = brutas.map(montarChaveRm);
+      const chaves = montarChavesRm(brutas);
       const existentes = await fetchChavesExistentes(chaves);
-      const vistasNoArquivo = new Set<string>();
 
-      const linhas: LinhaRealizadoPreview[] = brutas.map((linha) => {
-        const chaveRm = montarChaveRm(linha);
-        const centroCustoId = codigoParaId.get(linha.centroCustoRm) ?? null;
+      const linhas: LinhaRealizadoPreview[] = brutas.map((linha, idx) => {
+        const chaveRm = chaves[idx];
+        const item = projetoParaItem.get(linha.codigoProjeto) ?? null;
         let situacao: LinhaRealizadoPreview["situacao"];
-        if (existentes.has(chaveRm) || vistasNoArquivo.has(chaveRm)) situacao = "DUPLICADA";
-        else if (!centroCustoId) situacao = "SEM_CENTRO_CUSTO";
+        if (existentes.has(chaveRm)) situacao = "DUPLICADA";
+        else if (!item) situacao = "SEM_ITEM";
         else situacao = "NOVA";
-        vistasNoArquivo.add(chaveRm);
         return {
           ...linha,
           chaveRm,
           competencia: primeiroDiaDoMes(linha.data),
-          centroCustoId,
+          itemOrcamentoId: item?.id ?? null,
+          centroCustoId: item?.centro_custo_id ?? null,
           situacao,
         };
       });
@@ -91,13 +92,13 @@ export default function ImportarRealizado() {
     const linhas = preview ?? [];
     const novas = linhas.filter((l) => l.situacao === "NOVA");
     const duplicadas = linhas.filter((l) => l.situacao === "DUPLICADA");
-    const semCc = linhas.filter((l) => l.situacao === "SEM_CENTRO_CUSTO");
+    const semItem = linhas.filter((l) => l.situacao === "SEM_ITEM");
     return {
       total: linhas.length,
       novas: novas.length,
       duplicadas: duplicadas.length,
-      semCc: semCc.length,
-      valorTotal: [...novas, ...semCc].reduce((s, l) => s + l.valor, 0),
+      semItem: semItem.length,
+      valorTotal: [...novas, ...semItem].reduce((s, l) => s + l.valor, 0),
     };
   }, [preview]);
 
@@ -110,14 +111,15 @@ export default function ImportarRealizado() {
         linhas: importaveis.map((l) => ({
           safra_id: safraId,
           centro_custo_id: l.centroCustoId,
-          codigo_cc_origem: l.centroCustoRm,
+          codigo_cc_origem: l.codigoProjeto,
           conta_contabil: l.contaContabil || null,
           data_lancamento: l.data,
           competencia: l.competencia,
           documento: l.documento || null,
-          historico: l.historico || null,
+          historico: [l.nomeProjeto, l.descricaoContabil].filter(Boolean).join(" — ") || null,
           valor: l.valor,
           chave_rm: l.chaveRm,
+          item_orcamento_id: l.itemOrcamentoId,
         })),
       });
     },
@@ -129,6 +131,7 @@ export default function ImportarRealizado() {
       qc.invalidateQueries({ queryKey: ["item-acumulado"] });
       qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
       qc.invalidateQueries({ queryKey: ["curva-mensal"] });
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
     },
     onError: (e: Error) => toast({ title: "Erro ao importar", description: e.message, variant: "destructive" }),
   });
@@ -148,8 +151,10 @@ export default function ImportarRealizado() {
       <div>
         <h1 className="text-2xl lg:text-3xl font-bold text-foreground">Importar Realizado</h1>
         <p className="text-sm text-muted-foreground">
-          Suba o arquivo exportado do TOTVS RM (.xlsx ou .csv) com Data, Centro de Custo RM, Conta
-          Contábil, Documento, Histórico e Valor Realizado.
+          Suba o extrato de custos do TOTVS RM (.xlsx ou .csv) com DATA, CODCCUSTO, NOMECUSTO,
+          CONTA_CONTABIL, DESCRICAO_CONTABIL, DOCUMENTO e SALDO. Cada CODCCUSTO é um projeto/obra
+          do RM — na primeira vez que aparecer, vincule-o a um item em Pendências; da próxima
+          importação em diante ele casa automaticamente.
         </p>
       </div>
 
@@ -180,18 +185,26 @@ export default function ImportarRealizado() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <ResumoCard label="Total de linhas" value={String(resumo.total)} />
-            <ResumoCard label="Novas" value={String(resumo.novas)} />
+            <ResumoCard label="Vinculadas" value={String(resumo.novas)} />
             <ResumoCard label="Duplicadas" value={String(resumo.duplicadas)} />
-            <ResumoCard label="Sem centro de custo" value={String(resumo.semCc)} />
+            <ResumoCard label="Sem item vinculado" value={String(resumo.semItem)} />
             <ResumoCard label="Valor a importar" value={moeda(resumo.valorTotal)} />
           </div>
+
+          {resumo.semItem > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {resumo.semItem} lançamento(s) não correspondem a nenhum item cadastrado (podem ser
+              projetos que ainda não foram vinculados, ou custos que não são investimento). Eles
+              serão importados mesmo assim e aparecem em Pendências para vínculo manual.
+            </p>
+          )}
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Prévia da importação</CardTitle>
               <Button
                 onClick={() => confirmar.mutate()}
-                disabled={resumo.novas + resumo.semCc === 0 || confirmar.isPending}
+                disabled={resumo.novas + resumo.semItem === 0 || confirmar.isPending}
               >
                 Confirmar importação
               </Button>
@@ -201,10 +214,9 @@ export default function ImportarRealizado() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Data</TableHead>
-                    <TableHead>CC RM</TableHead>
+                    <TableHead>Projeto (RM)</TableHead>
                     <TableHead>Conta</TableHead>
                     <TableHead>Documento</TableHead>
-                    <TableHead>Histórico</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
                     <TableHead>Situação</TableHead>
                   </TableRow>
@@ -213,10 +225,12 @@ export default function ImportarRealizado() {
                   {preview.map((l, idx) => (
                     <TableRow key={idx}>
                       <TableCell>{dataBr(l.data)}</TableCell>
-                      <TableCell className="font-mono text-xs">{l.centroCustoRm}</TableCell>
+                      <TableCell className="max-w-[260px]">
+                        <p className="truncate">{l.nomeProjeto}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{l.codigoProjeto}</p>
+                      </TableCell>
                       <TableCell className="font-mono text-xs">{l.contaContabil}</TableCell>
                       <TableCell>{l.documento}</TableCell>
-                      <TableCell className="max-w-[220px] truncate">{l.historico}</TableCell>
                       <TableCell className="text-right">{moeda(l.valor)}</TableCell>
                       <TableCell>
                         <Badge variant={SITUACAO_VARIANT[l.situacao]}>{SITUACAO_LABEL[l.situacao]}</Badge>

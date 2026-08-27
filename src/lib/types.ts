@@ -50,6 +50,9 @@ export interface ItemOrcamento {
   observacao: string | null;
   created_at: string;
   updated_at: string;
+  // Código do projeto/obra no TOTVS RM (ex.: "99.00.1314"), aprendido na
+  // tela de Pendências na primeira vez que um lançamento é vinculado.
+  codigo_rm_projeto: string | null;
 }
 
 export interface OrcamentoMensal {

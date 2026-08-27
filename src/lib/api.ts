@@ -121,6 +121,22 @@ export async function fetchItensOrcamentoPorSafra(safraId: string): Promise<Item
   return (data ?? []) as ItemOrcamento[];
 }
 
+export interface ItemComCodigoProjeto {
+  id: string;
+  codigo_rm_projeto: string;
+  centro_custo_id: string;
+}
+
+export async function fetchItensComCodigoProjeto(safraId: string): Promise<ItemComCodigoProjeto[]> {
+  const { data, error } = await supabase
+    .from("item_orcamento")
+    .select("id, codigo_rm_projeto, centro_custo_id")
+    .eq("safra_id", safraId)
+    .not("codigo_rm_projeto", "is", null);
+  if (error) throw error;
+  return (data ?? []) as ItemComCodigoProjeto[];
+}
+
 export async function fetchOrcamentoMensalPorItens(itemIds: string[]): Promise<OrcamentoMensal[]> {
   if (itemIds.length === 0) return [];
   const { data, error } = await supabase
@@ -155,6 +171,7 @@ interface NovaLinhaRealizado {
   historico: string | null;
   valor: number;
   chave_rm: string;
+  item_orcamento_id: string | null;
 }
 
 export async function criarCentroCustoEReprocessar(params: {
@@ -177,11 +194,25 @@ export async function criarCentroCustoEReprocessar(params: {
   if (updateError) throw updateError;
 }
 
-export async function vincularItemEmLote(realizadoIds: string[], itemOrcamentoId: string): Promise<void> {
+export async function vincularItemEmLote(
+  realizadoIds: string[],
+  itemOrcamentoId: string,
+  centroCustoId: string
+): Promise<void> {
   const { error } = await supabase
     .from("realizado")
-    .update({ item_orcamento_id: itemOrcamentoId })
+    .update({ item_orcamento_id: itemOrcamentoId, centro_custo_id: centroCustoId })
     .in("id", realizadoIds);
+  if (error) throw error;
+}
+
+// Ensina o vínculo: da próxima vez que este projeto do RM aparecer na
+// importação, já casa direto com o item sem passar por Pendências.
+export async function aprenderCodigoProjeto(itemOrcamentoId: string, codigoRmProjeto: string): Promise<void> {
+  const { error } = await supabase
+    .from("item_orcamento")
+    .update({ codigo_rm_projeto: codigoRmProjeto })
+    .eq("id", itemOrcamentoId);
   if (error) throw error;
 }
 
