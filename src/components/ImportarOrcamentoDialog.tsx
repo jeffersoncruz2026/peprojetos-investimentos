@@ -17,10 +17,13 @@ import { useToast } from "@/hooks/use-toast";
 import { criarCentroCusto, criarItemOrcamentoComMeses } from "@/lib/api";
 import { parseArquivoOrcamento, type LinhaOrcamentoBruta } from "@/lib/importOrcamento";
 import { mensagemErro, moeda } from "@/lib/format";
+import { gerarCodigoUnidade } from "@/lib/xlsxCell";
 import type { CentroCusto, ItemOrcamento } from "@/lib/types";
 
 interface GrupoOrcamentoPreview {
   chave: string;
+  idItem: string;
+  chaveArea: string;
   codigoCc: string;
   nomeCc: string;
   atividade: string;
@@ -32,12 +35,20 @@ interface GrupoOrcamentoPreview {
   itemExistente: ItemOrcamento | null;
 }
 
+// Nem toda planilha traz um código próprio de centro de custo (o modelo
+// oficial e o "Exportar Excel" da própria tela só trazem o nome) — nesses
+// casos o vínculo com uma unidade já cadastrada é feito pelo nome.
+function chaveDaArea(codigoCc: string, nomeCc: string): string {
+  return codigoCc || nomeCc.toLowerCase().trim();
+}
+
 function agruparLinhas(
   linhas: LinhaOrcamentoBruta[],
   centros: CentroCusto[],
   itens: ItemOrcamento[]
 ): GrupoOrcamentoPreview[] {
   const porCodigoCc = new Map(centros.map((c) => [c.codigo_rm, c]));
+  const porNomeCc = new Map(centros.map((c) => [c.nome.toLowerCase().trim(), c]));
   const porCodigoProjeto = new Map(
     itens.filter((i) => i.codigo_rm_projeto).map((i) => [i.codigo_rm_projeto as string, i])
   );
@@ -47,10 +58,13 @@ function agruparLinhas(
 
   const grupos = new Map<string, GrupoOrcamentoPreview>();
   for (const linha of linhas) {
-    const chave = linha.idItem || `${linha.codigoCc}|${linha.item.toLowerCase().trim()}`;
+    const chave = linha.idItem || `${linha.codigoCc}|${linha.nomeCc}|${linha.item.toLowerCase().trim()}`;
     let g = grupos.get(chave);
     if (!g) {
-      const centroCustoExistente = porCodigoCc.get(linha.codigoCc) ?? null;
+      const centroCustoExistente =
+        (linha.codigoCc && porCodigoCc.get(linha.codigoCc)) ||
+        porNomeCc.get(linha.nomeCc.toLowerCase().trim()) ||
+        null;
       let itemExistente: ItemOrcamento | null = null;
       if (linha.codigoProjeto) itemExistente = porCodigoProjeto.get(linha.codigoProjeto) ?? null;
       if (!itemExistente && centroCustoExistente) {
@@ -59,6 +73,8 @@ function agruparLinhas(
       }
       g = {
         chave,
+        idItem: linha.idItem,
+        chaveArea: chaveDaArea(linha.codigoCc, linha.nomeCc),
         codigoCc: linha.codigoCc,
         nomeCc: linha.nomeCc,
         atividade: linha.atividade,
@@ -102,7 +118,7 @@ export function ImportarOrcamentoDialog({
       const brutas = await parseArquivoOrcamento(file);
       if (brutas.length === 0) {
         throw new Error(
-          "Nenhuma linha reconhecida. Confira se as colunas Centro de Custo RM, Item, Competência e Valor Orçado existem."
+          "Nenhuma linha reconhecida. Confira se as colunas Item e Centro de Custo (ou Centro de Custo RM) existem, e se há colunas de mês (ex.: \"abr/26\") ou Competência + Valor Orçado."
         );
       }
       setPreview(agruparLinhas(brutas, centros, itens));
@@ -118,7 +134,7 @@ export function ImportarOrcamentoDialog({
     const grupos = preview ?? [];
     const novos = grupos.filter((g) => !g.itemExistente);
     const existentes = grupos.filter((g) => g.itemExistente);
-    const unidadesNovas = new Set(novos.filter((g) => !g.centroCustoExistente).map((g) => g.codigoCc));
+    const unidadesNovas = new Set(novos.filter((g) => !g.centroCustoExistente).map((g) => g.chaveArea));
     return {
       total: grupos.length,
       novos: novos.length,
@@ -133,19 +149,23 @@ export function ImportarOrcamentoDialog({
       const novos = (preview ?? []).filter((g) => !g.itemExistente);
       const centrosCriados = new Map<string, string>();
       for (const g of novos) {
-        if (!g.centroCustoExistente && !centrosCriados.has(g.codigoCc)) {
-          const cc = await criarCentroCusto({ codigoRm: g.codigoCc, nome: g.nomeCc, atividade: g.atividade });
-          centrosCriados.set(g.codigoCc, cc.id);
+        if (!g.centroCustoExistente && !centrosCriados.has(g.chaveArea)) {
+          const cc = await criarCentroCusto({
+            codigoRm: g.codigoCc || gerarCodigoUnidade(g.nomeCc),
+            nome: g.nomeCc,
+            atividade: g.atividade,
+          });
+          centrosCriados.set(g.chaveArea, cc.id);
         }
       }
       let indiceSemCodigo = 0;
       for (const g of novos) {
-        const centroCustoId = g.centroCustoExistente?.id ?? centrosCriados.get(g.codigoCc);
-        if (!centroCustoId) throw new Error(`Centro de custo ${g.codigoCc} não pôde ser criado.`);
+        const centroCustoId = g.centroCustoExistente?.id ?? centrosCriados.get(g.chaveArea);
+        if (!centroCustoId) throw new Error(`Centro de custo ${g.nomeCc} não pôde ser criado.`);
         indiceSemCodigo += 1;
         await criarItemOrcamentoComMeses({
           safraId,
-          codigo: g.codigoProjeto || `${g.codigoCc}#${indiceSemCodigo}`,
+          codigo: g.idItem || g.codigoProjeto || `${g.chaveArea}#${indiceSemCodigo}`,
           codigoRmProjeto: g.codigoProjeto || null,
           descricao: g.item,
           centroCustoId,
@@ -191,11 +211,14 @@ export function ImportarOrcamentoDialog({
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          Planilha com uma linha por item x mês: Centro de Custo RM, Unidade, Atividade, Item,
-          Competência, Valor Orçado — e opcionalmente CODCCUSTO (código do projeto no RM, para já
-          deixar o item pronto para casar sozinho ao importar o realizado) e ID Item (para agrupar
-          várias linhas do mesmo item em meses diferentes). Fazendas/unidades novas são criadas
-          automaticamente; itens que já existem são pulados — para alterá-los, use a grade.
+          Aceita o modelo oficial — uma linha por item, um mês por coluna (Código, CODCCUSTO,
+          Item, Centro de Custo, Atividade, abr/26 ... mar/27, Total) — que é também o formato do
+          "Exportar Excel" da grade, então dá para editar a exportação e reimportar. Também aceita
+          o formato antigo, uma linha por item x mês (Centro de Custo RM, Unidade, Atividade,
+          Item, Competência, Valor Orçado). CODCCUSTO é opcional (deixa o item pronto para casar
+          sozinho ao importar o realizado); "Centro de Custo" pode ser só o nome — fazendas/
+          unidades novas são criadas automaticamente por nome. Itens que já existem são pulados —
+          para alterá-los, use a grade ou o ícone de editar.
         </p>
 
         <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg py-8 cursor-pointer hover:bg-muted/40 transition-colors">

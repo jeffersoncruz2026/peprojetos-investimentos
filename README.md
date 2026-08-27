@@ -95,6 +95,14 @@ passa a ver tudo em modo somente leitura.
   ambos a partir do botão no topo da tela. Cada item já cadastrado pode ser editado (ícone de
   lápis ao lado da descrição — código, nome e área; os valores mensais continuam se editando
   direto na grade) e a grade inteira pode ser exportada para Excel a qualquer momento.
+
+  O cadastro em lote aceita o modelo oficial (`Código, CODCCUSTO, Item, Centro de Custo,
+  Atividade, abr/26 ... mar/27, Total` — uma linha por item, um mês por coluna), que é o mesmo
+  formato do "Exportar Excel" da grade — dá pra editar a planilha exportada e reimportar direto.
+  Também aceita o formato antigo, uma linha por item x mês (`Centro de Custo RM, Unidade,
+  Atividade, Item, Competência, Valor Orçado`). CODCCUSTO é opcional; "Centro de Custo" pode ser
+  só o nome (sem código próprio) — o vínculo com uma unidade já cadastrada é então feito pelo
+  nome.
 - **Importar Realizado** — upload do extrato de custos por projeto do RM (.xlsx/.csv), preview
   com vinculadas/duplicadas/sem item antes de gravar.
 - **Pendências** — lançamentos sem item vinculado (vínculo em lote, aprendido para as próximas

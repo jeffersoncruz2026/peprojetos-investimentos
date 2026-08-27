@@ -67,6 +67,19 @@ export function competenciaLabel(v: string | null | undefined) {
   return `${MESES_ABREV[idx] ?? mes}/${ano.slice(2)}`;
 }
 
+// Inverso de competenciaLabel: "abr/26" -> "2026-04-01". Usado para
+// reconhecer colunas de planilha nesse formato (um mês por coluna, como no
+// export/import em lote do orçamento) — retorna null se não bater o padrão.
+export function parseCompetenciaLabel(label: string): string | null {
+  const m = label.trim().toLowerCase().match(/^([a-z]{3})[/-](\d{2,4})$/);
+  if (!m) return null;
+  const idx = MESES_ABREV.indexOf(m[1]);
+  if (idx === -1) return null;
+  const anoStr = m[2];
+  const ano = anoStr.length === 4 ? Number(anoStr) : 2000 + Number(anoStr);
+  return `${ano}-${String(idx + 1).padStart(2, "0")}-01`;
+}
+
 // gera as 12 competências (dia 1) de uma safra, a partir da data de início
 export function competenciasSafra(dataInicio: string, meses = 12): string[] {
   const [ano, mes] = dataInicio.slice(0, 10).split("-").map(Number);

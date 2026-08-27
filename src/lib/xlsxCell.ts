@@ -50,3 +50,17 @@ export function parseCompetenciaCell(v: unknown): string {
   if (mesAno) return `${mesAno[2]}-${mesAno[1].padStart(2, "0")}-01`;
   return `${parseDataCell(v).slice(0, 7)}-01`;
 }
+
+// Gera um código de fazenda/unidade quando o usuário não informa um (nem
+// toda planilha de orçamento traz uma coluna própria de código da unidade,
+// só o nome) — um slug do nome mais um sufixo curto para garantir unicidade.
+export function gerarCodigoUnidade(nome: string): string {
+  const slug = nome
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  const sufixo = Date.now().toString(36).slice(-4).toUpperCase();
+  return `${slug || "UNIDADE"}-${sufixo}`;
+}
