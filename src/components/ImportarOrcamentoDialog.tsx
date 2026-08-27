@@ -16,11 +16,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { criarCentroCusto, criarItemOrcamentoComMeses } from "@/lib/api";
 import { parseArquivoOrcamento, type LinhaOrcamentoBruta } from "@/lib/importOrcamento";
-import { mensagemErro, moeda } from "@/lib/format";
+import { competenciaLabel, mensagemErro, moeda } from "@/lib/format";
 import { gerarCodigoUnidade } from "@/lib/xlsxCell";
 import type { CentroCusto, ItemOrcamento } from "@/lib/types";
 
-interface GrupoOrcamentoPreview {
+interface GrupoOrcamentoItem {
   chave: string;
   idItem: string;
   chaveArea: string;
@@ -30,7 +30,18 @@ interface GrupoOrcamentoPreview {
   codigoProjeto: string;
   item: string;
   meses: { competencia: string; valor: number }[];
-  valorTotal: number;
+  centroCustoExistente: CentroCusto | null;
+  itemExistente: ItemOrcamento | null;
+}
+
+interface LinhaPreview {
+  chaveGrupo: string;
+  codigoCc: string;
+  nomeCc: string;
+  codigoProjeto: string;
+  item: string;
+  competencia: string;
+  valor: number;
   centroCustoExistente: CentroCusto | null;
   itemExistente: ItemOrcamento | null;
 }
@@ -42,11 +53,19 @@ function chaveDaArea(codigoCc: string, nomeCc: string): string {
   return codigoCc || nomeCc.toLowerCase().trim();
 }
 
-function agruparLinhas(
+function chaveDoGrupo(linha: LinhaOrcamentoBruta): string {
+  return linha.idItem || `${linha.codigoCc}|${linha.nomeCc}|${linha.item.toLowerCase().trim()}`;
+}
+
+// item_orcamento só pode ser criado uma vez por item (não uma vez por
+// mês), então os itens precisam ficar agrupados para o cadastro — mas a
+// prévia exibida ao usuário lista cada linha da planilha individualmente,
+// como a de Importar Realizado.
+function processarLinhas(
   linhas: LinhaOrcamentoBruta[],
   centros: CentroCusto[],
   itens: ItemOrcamento[]
-): GrupoOrcamentoPreview[] {
+): { grupos: GrupoOrcamentoItem[]; linhasPreview: LinhaPreview[] } {
   const porCodigoCc = new Map(centros.map((c) => [c.codigo_rm, c]));
   const porNomeCc = new Map(centros.map((c) => [c.nome.toLowerCase().trim(), c]));
   const porCodigoProjeto = new Map(
@@ -56,9 +75,9 @@ function agruparLinhas(
     itens.map((i) => [`${i.centro_custo_id}|${i.descricao.toLowerCase().trim()}`, i])
   );
 
-  const grupos = new Map<string, GrupoOrcamentoPreview>();
+  const grupos = new Map<string, GrupoOrcamentoItem>();
   for (const linha of linhas) {
-    const chave = linha.idItem || `${linha.codigoCc}|${linha.nomeCc}|${linha.item.toLowerCase().trim()}`;
+    const chave = chaveDoGrupo(linha);
     let g = grupos.get(chave);
     if (!g) {
       const centroCustoExistente =
@@ -81,16 +100,30 @@ function agruparLinhas(
         codigoProjeto: linha.codigoProjeto,
         item: linha.item,
         meses: [],
-        valorTotal: 0,
         centroCustoExistente,
         itemExistente,
       };
       grupos.set(chave, g);
     }
     g.meses.push({ competencia: linha.competencia, valor: linha.valor });
-    g.valorTotal += linha.valor;
   }
-  return [...grupos.values()];
+
+  const linhasPreview: LinhaPreview[] = linhas.map((linha) => {
+    const g = grupos.get(chaveDoGrupo(linha))!;
+    return {
+      chaveGrupo: g.chave,
+      codigoCc: linha.codigoCc,
+      nomeCc: linha.nomeCc,
+      codigoProjeto: linha.codigoProjeto,
+      item: linha.item,
+      competencia: linha.competencia,
+      valor: linha.valor,
+      centroCustoExistente: g.centroCustoExistente,
+      itemExistente: g.itemExistente,
+    };
+  });
+
+  return { grupos: [...grupos.values()], linhasPreview };
 }
 
 export function ImportarOrcamentoDialog({
@@ -108,7 +141,8 @@ export function ImportarOrcamentoDialog({
 
   const [open, setOpen] = useState(false);
   const [arquivoNome, setArquivoNome] = useState<string | null>(null);
-  const [preview, setPreview] = useState<GrupoOrcamentoPreview[] | null>(null);
+  const [grupos, setGrupos] = useState<GrupoOrcamentoItem[] | null>(null);
+  const [linhasPreview, setLinhasPreview] = useState<LinhaPreview[] | null>(null);
   const [processando, setProcessando] = useState(false);
 
   async function handleFile(file: File) {
@@ -121,32 +155,35 @@ export function ImportarOrcamentoDialog({
           "Nenhuma linha reconhecida. Confira se as colunas Item e Centro de Custo (ou Centro de Custo RM) existem, e se há colunas de mês (ex.: \"abr/26\") ou Competência + Valor Orçado."
         );
       }
-      setPreview(agruparLinhas(brutas, centros, itens));
+      const resultado = processarLinhas(brutas, centros, itens);
+      setGrupos(resultado.grupos);
+      setLinhasPreview(resultado.linhasPreview);
     } catch (e) {
       toast({ title: "Erro ao ler arquivo", description: mensagemErro(e), variant: "destructive" });
-      setPreview(null);
+      setGrupos(null);
+      setLinhasPreview(null);
     } finally {
       setProcessando(false);
     }
   }
 
   const resumo = useMemo(() => {
-    const grupos = preview ?? [];
-    const novos = grupos.filter((g) => !g.itemExistente);
-    const existentes = grupos.filter((g) => g.itemExistente);
+    const lista = grupos ?? [];
+    const novos = lista.filter((g) => !g.itemExistente);
+    const existentes = lista.filter((g) => g.itemExistente);
     const unidadesNovas = new Set(novos.filter((g) => !g.centroCustoExistente).map((g) => g.chaveArea));
     return {
-      total: grupos.length,
-      novos: novos.length,
-      existentes: existentes.length,
+      linhas: linhasPreview?.length ?? 0,
+      itensNovos: novos.length,
+      itensExistentes: existentes.length,
       unidadesNovas: unidadesNovas.size,
-      valorTotal: novos.reduce((s, g) => s + g.valorTotal, 0),
+      valorTotal: novos.reduce((s, g) => s + g.meses.reduce((sm, m) => sm + m.valor, 0), 0),
     };
-  }, [preview]);
+  }, [grupos, linhasPreview]);
 
   const confirmar = useMutation({
     mutationFn: async () => {
-      const novos = (preview ?? []).filter((g) => !g.itemExistente);
+      const novos = (grupos ?? []).filter((g) => !g.itemExistente);
       const centrosCriados = new Map<string, string>();
       for (const g of novos) {
         if (!g.centroCustoExistente && !centrosCriados.has(g.chaveArea)) {
@@ -174,9 +211,10 @@ export function ImportarOrcamentoDialog({
       }
     },
     onSuccess: () => {
-      toast({ title: `${resumo.novos} item(ns) de orçamento cadastrado(s).` });
+      toast({ title: `${resumo.itensNovos} item(ns) de orçamento cadastrado(s).` });
       setOpen(false);
-      setPreview(null);
+      setGrupos(null);
+      setLinhasPreview(null);
       setArquivoNome(null);
       if (fileRef.current) fileRef.current.value = "";
       qc.invalidateQueries({ queryKey: ["itens-orcamento", safraId] });
@@ -193,7 +231,8 @@ export function ImportarOrcamentoDialog({
   function handleOpenChange(v: boolean) {
     setOpen(v);
     if (!v) {
-      setPreview(null);
+      setGrupos(null);
+      setLinhasPreview(null);
       setArquivoNome(null);
     }
   }
@@ -240,43 +279,44 @@ export function ImportarOrcamentoDialog({
           </p>
         )}
 
-        {preview && (
+        {linhasPreview && (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <ResumoCard label="Itens novos" value={String(resumo.novos)} />
-              <ResumoCard label="Já existentes (pulados)" value={String(resumo.existentes)} />
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <ResumoCard label="Linhas na planilha" value={String(resumo.linhas)} />
+              <ResumoCard label="Itens novos" value={String(resumo.itensNovos)} />
+              <ResumoCard label="Itens já existentes" value={String(resumo.itensExistentes)} />
               <ResumoCard label="Novas unidades" value={String(resumo.unidadesNovas)} />
               <ResumoCard label="Valor a cadastrar" value={moeda(resumo.valorTotal)} />
             </div>
 
-            <div className="overflow-x-auto overflow-y-auto max-h-[320px] border border-border rounded-lg">
+            <div className="overflow-x-auto overflow-y-auto max-h-[400px] border border-border rounded-lg">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Centro de custo</TableHead>
                     <TableHead>Item</TableHead>
                     <TableHead>CODCCUSTO</TableHead>
-                    <TableHead className="text-right">Meses</TableHead>
-                    <TableHead className="text-right">Valor total</TableHead>
+                    <TableHead>Competência</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
                     <TableHead>Situação</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {preview.map((g) => (
-                    <TableRow key={g.chave}>
-                      <TableCell className="max-w-[180px]">
-                        <p className="truncate">{g.nomeCc}</p>
-                        <p className="font-mono text-xs text-muted-foreground">
-                          {g.codigoCc} {!g.centroCustoExistente && "(nova)"}
-                        </p>
+                  {linhasPreview.map((l, idx) => (
+                    <TableRow key={`${l.chaveGrupo}-${l.competencia}-${idx}`}>
+                      <TableCell className="max-w-[160px]">
+                        <p className="truncate">{l.nomeCc}</p>
+                        {!l.centroCustoExistente && (
+                          <p className="text-xs text-muted-foreground">(nova unidade)</p>
+                        )}
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate">{g.item}</TableCell>
-                      <TableCell className="font-mono text-xs">{g.codigoProjeto || "—"}</TableCell>
-                      <TableCell className="text-right">{g.meses.length}</TableCell>
-                      <TableCell className="text-right">{moeda(g.valorTotal)}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{l.item}</TableCell>
+                      <TableCell className="font-mono text-xs">{l.codigoProjeto || "—"}</TableCell>
+                      <TableCell>{competenciaLabel(l.competencia)}</TableCell>
+                      <TableCell className="text-right">{moeda(l.valor)}</TableCell>
                       <TableCell>
-                        <Badge variant={g.itemExistente ? "secondary" : "default"}>
-                          {g.itemExistente ? "Já existe" : "Nova"}
+                        <Badge variant={l.itemExistente ? "secondary" : "default"}>
+                          {l.itemExistente ? "Já existe" : "Nova"}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -291,7 +331,7 @@ export function ImportarOrcamentoDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={() => confirmar.mutate()} disabled={resumo.novos === 0 || confirmar.isPending}>
+          <Button onClick={() => confirmar.mutate()} disabled={resumo.itensNovos === 0 || confirmar.isPending}>
             Confirmar cadastro
           </Button>
         </DialogFooter>
