@@ -327,7 +327,7 @@ function NovoItemOrcamento({
       let ccId = centroCustoId;
       if (novaArea) {
         const cc = await criarCentroCusto({
-          codigoRm: novaAreaCodigo.trim(),
+          codigoRm: novaAreaCodigo.trim() || gerarCodigoAuto(novaAreaNome),
           nome: novaAreaNome.trim(),
           atividade: novaAreaAtividade,
         });
@@ -357,11 +357,14 @@ function NovoItemOrcamento({
       toast({ title: "Erro ao cadastrar", description: mensagemErro(e), variant: "destructive" }),
   });
 
-  const areaPreenchida = novaArea
-    ? novaAreaCodigo.trim() && novaAreaNome.trim()
-    : Boolean(centroCustoId);
-  const podeSalvar =
-    codccusto.trim() && nomecusto.trim() && areaPreenchida && valor.trim() && Boolean(primeiraCompetencia);
+  const areaPreenchida = novaArea ? Boolean(novaAreaNome.trim()) : Boolean(centroCustoId);
+  const camposFaltando: string[] = [];
+  if (!codccusto.trim()) camposFaltando.push("CODCCUSTO");
+  if (!nomecusto.trim()) camposFaltando.push("NOMECUSTO");
+  if (!areaPreenchida) camposFaltando.push(novaArea ? "nome da unidade" : "área");
+  if (!valor.trim()) camposFaltando.push("valor orçado");
+  if (!primeiraCompetencia) camposFaltando.push("safra (ainda carregando)");
+  const podeSalvar = camposFaltando.length === 0;
 
   function handleOpenChange(v: boolean) {
     setOpen(v);
@@ -409,13 +412,18 @@ function NovoItemOrcamento({
             </div>
             {novaArea ? (
               <div className="space-y-2 mt-1">
+                <p className="text-xs text-muted-foreground">
+                  Este é o código da fazenda/unidade em si — geralmente diferente do CODCCUSTO do
+                  projeto lá em cima. Se não souber, pode repetir o mesmo código; só o nome é
+                  obrigatório.
+                </p>
                 <Input
                   placeholder="Código RM da unidade (ex.: 001.02.01.010)"
                   value={novaAreaCodigo}
                   onChange={(e) => setNovaAreaCodigo(e.target.value)}
                 />
                 <Input
-                  placeholder="Nome da fazenda/unidade"
+                  placeholder="Nome da fazenda/unidade *"
                   value={novaAreaNome}
                   onChange={(e) => setNovaAreaNome(e.target.value)}
                 />
@@ -460,6 +468,11 @@ function NovoItemOrcamento({
             </p>
           </div>
         </div>
+        {camposFaltando.length > 0 && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            Falta preencher: {camposFaltando.join(", ")}.
+          </p>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancelar
@@ -471,4 +484,15 @@ function NovoItemOrcamento({
       </DialogContent>
     </Dialog>
   );
+}
+
+function gerarCodigoAuto(nome: string): string {
+  const slug = nome
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  const sufixo = Date.now().toString(36).slice(-4).toUpperCase();
+  return `${slug || "UNIDADE"}-${sufixo}`;
 }
