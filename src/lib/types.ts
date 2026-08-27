@@ -19,6 +19,17 @@ export type Atividade =
   | "VENDA DE VEICULOS"
   | "CUSTEIO";
 
+export const ATIVIDADES: Atividade[] = [
+  "SERINGUEIRA",
+  "PECUARIA",
+  "AGRICOLA",
+  "ADMINISTRACAO",
+  "OFICINA",
+  "VEICULOS E MECANIZADOS",
+  "VENDA DE VEICULOS",
+  "CUSTEIO",
+];
+
 export interface CentroCusto {
   id: string;
   codigo_rm: string;
