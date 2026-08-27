@@ -1,73 +1,67 @@
-# Welcome to your Lovable project
+# Controle de Investimentos — Orçado x Realizado
 
-## Project info
+Aplicativo web de controle orçamentário de investimentos da safra 2026/2027 (Grupo Otávio
+Lage). Orçado por item/mês, realizado importado do TOTVS RM, farol de execução por item e
+por centro de custo, importação com preview e fila de pendências.
 
-**URL**: https://lovable.dev/projects/532e27f8-53fc-4f4a-a577-f36bbe98539a
+## Stack
 
-## How can I edit this code?
+Vite + React + TypeScript + shadcn-ui + Tailwind + Supabase (Postgres + Auth).
 
-There are several ways of editing your application.
+## Configuração do banco (Supabase)
 
-**Use Lovable**
+1. Crie um projeto no [Supabase](https://supabase.com).
+2. No SQL Editor, rode **nesta ordem**:
+   - `supabase/sql/01_supabase_schema.sql` — tabelas, views e RLS.
+   - `supabase/sql/02_safra_aware_views.sql` — ajusta `v_item_mes`, `v_item_acumulado` para
+     expor `safra_id` e cria as funções `f_cc_acumulado(safra_id)` / `f_curva_mensal(safra_id)`,
+     necessárias para o seletor de safra do app funcionar corretamente (o schema original tem
+     `v_cc_acumulado` e `v_curva_mensal` fixos numa única safra).
+3. Carregue o orçado inicial: importe `supabase/sql/seed_orcamento_mensal.csv` numa tabela
+   temporária pelo Table Editor e rode o bloco de carga comentado no fim do
+   `01_supabase_schema.sql` (cria os 25 centros de custo, os 127 itens e o orçado mensal).
+4. (Opcional) Para o perfil GESTOR, crie usuários em Authentication → Users. Por padrão, todo
+   usuário autenticado é tratado como GESTOR; para deixar alguém como somente leitura, defina
+   `role: "LEITURA"` no `user_metadata` do usuário.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/532e27f8-53fc-4f4a-a577-f36bbe98539a) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Configuração do app
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+cp .env.example .env
+# preencha VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY com os dados do projeto Supabase
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Perfis de acesso
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- **Sem login**: modo LEITURA — visualiza tudo, não edita.
+- **Logado (GESTOR)**: edita orçamento (com justificativa obrigatória por alteração), importa
+  o realizado do RM e resolve pendências de vínculo.
 
-**Use GitHub Codespaces**
+## Telas
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- **Home** — cartões de orçado/realizado/comprometido/saldo, curva mensal, orçado x realizado
+  por atividade, itens fora do farol OK.
+- **Centros de Custo** — lista e detalhe por unidade (sempre fecha com o RM, mesmo sem item
+  vinculado).
+- **Item** — cabeçalho editável, orçado x realizado por mês, lançamentos do RM, compromissos.
+- **Orçamento** — grade editável (itens x meses), com histórico de revisão e bloqueio quando a
+  safra está CONGELADA.
+- **Importar Realizado** — upload de .xlsx/.csv do RM, preview com novas/duplicadas/sem centro
+  de custo antes de gravar.
+- **Pendências** — centro de custo não cadastrado e lançamentos sem item, com vínculo em lote.
+- **Relatórios** — exportação para Excel e posição da safra para impressão/PDF.
 
-## What technologies are used for this project?
+## Como editar este código
 
-This project is built with:
+**Use seu IDE local**
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```sh
+git clone <URL_DO_REPOSITORIO>
+cd peprojetos-investimentos
+npm install
+npm run dev
+```
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/532e27f8-53fc-4f4a-a577-f36bbe98539a) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+**Edite direto no GitHub** ou use o **GitHub Codespaces** normalmente.
