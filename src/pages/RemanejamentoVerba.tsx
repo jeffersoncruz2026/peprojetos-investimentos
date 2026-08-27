@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowLeftRight, Lock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/hooks/useAuth";
 import { useSafra } from "@/hooks/useSafra";
 import { useToast } from "@/hooks/use-toast";
@@ -20,8 +20,7 @@ import {
   fetchCentrosCusto,
   fetchItensOrcamentoPorSafra,
   fetchOrcamentoMensalPorItens,
-  fetchRemanejamentosPorSafra,
-  remanejarVerba,
+  solicitarRemanejamento,
 } from "@/lib/api";
 import { supabaseConfigured } from "@/lib/supabaseClient";
 import { competenciaLabel, competenciasSafra, mensagemErro, moeda } from "@/lib/format";
@@ -60,12 +59,6 @@ export default function RemanejamentoVerba() {
     enabled: supabaseConfigured && itemIds.length > 0,
   });
 
-  const historico = useQuery({
-    queryKey: ["remanejamentos", safraId],
-    queryFn: () => fetchRemanejamentosPorSafra(safraId),
-    enabled: supabaseConfigured,
-  });
-
   const centroNome = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of centros.data ?? []) map.set(c.id, c.nome);
@@ -83,18 +76,33 @@ export default function RemanejamentoVerba() {
   const itemLabel = useMemo(() => {
     const map = new Map<string, string>();
     for (const item of itens.data ?? []) {
-      map.set(item.id, `${item.codigo} · ${item.descricao} — ${centroNome.get(item.centro_custo_id) ?? ""}`);
+      map.set(item.id, `${item.codigo} · ${item.descricao}`);
     }
     return map;
-  }, [itens.data, centroNome]);
+  }, [itens.data]);
 
+  const [centroCustoId, setCentroCustoId] = useState("");
   const [itemOrigemId, setItemOrigemId] = useState("");
   const [itemDestinoId, setItemDestinoId] = useState("");
   const [competencia, setCompetencia] = useState("");
   const [valor, setValor] = useState("");
   const [motivo, setMotivo] = useState("");
 
+  // Só lista itens da fazenda/unidade selecionada, senão os investimentos de
+  // todas as fazendas ficam misturados no mesmo dropdown.
+  const itensDaFazenda = useMemo(
+    () => (itens.data ?? []).filter((item) => item.centro_custo_id === centroCustoId),
+    [itens.data, centroCustoId]
+  );
+
+  function handleFazendaChange(v: string) {
+    setCentroCustoId(v);
+    setItemOrigemId("");
+    setItemDestinoId("");
+  }
+
   function limpar() {
+    setCentroCustoId("");
     setItemOrigemId("");
     setItemDestinoId("");
     setCompetencia("");
@@ -105,10 +113,11 @@ export default function RemanejamentoVerba() {
   const valorNumerico = Number(valor.replace(/\./g, "").replace(",", ".")) || 0;
   const saldoOrigem =
     itemOrigemId && competencia ? valores.get(`${itemOrigemId}_${competencia}`) ?? 0 : null;
+  const excedeSaldo = saldoOrigem !== null && valorNumerico > saldoOrigem;
 
-  const remanejar = useMutation({
+  const solicitar = useMutation({
     mutationFn: () =>
-      remanejarVerba({
+      solicitarRemanejamento({
         safraId,
         itemOrigemId,
         itemDestinoId,
@@ -118,27 +127,25 @@ export default function RemanejamentoVerba() {
         usuario: usuarioAtual,
       }),
     onSuccess: () => {
-      toast({ title: "Verba remanejada." });
+      toast({ title: "Solicitação de remanejamento enviada para aprovação." });
       limpar();
-      qc.invalidateQueries({ queryKey: ["orcamento-mensal", itemIds] });
-      qc.invalidateQueries({ queryKey: ["item-acumulado"] });
-      qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
-      qc.invalidateQueries({ queryKey: ["curva-mensal"] });
       qc.invalidateQueries({ queryKey: ["remanejamentos", safraId] });
     },
     onError: (e: unknown) =>
-      toast({ title: "Erro ao remanejar", description: mensagemErro(e), variant: "destructive" }),
+      toast({ title: "Erro ao solicitar remanejamento", description: mensagemErro(e), variant: "destructive" }),
   });
 
   const camposFaltando: string[] = [];
+  if (!centroCustoId) camposFaltando.push("fazenda/unidade");
   if (!itemOrigemId) camposFaltando.push("item de origem");
   if (!itemDestinoId) camposFaltando.push("item de destino");
   if (itemOrigemId && itemDestinoId && itemOrigemId === itemDestinoId)
     camposFaltando.push("origem e destino devem ser diferentes");
   if (!competencia) camposFaltando.push("mês");
   if (valorNumerico <= 0) camposFaltando.push("valor");
+  if (excedeSaldo) camposFaltando.push("valor maior que o saldo disponível");
   if (!motivo.trim()) camposFaltando.push("motivo");
-  const podeRemanejar = editavel && camposFaltando.length === 0;
+  const podeSolicitar = editavel && camposFaltando.length === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -147,32 +154,57 @@ export default function RemanejamentoVerba() {
           Remanejamento de Verba — Safra {safraId}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Move o orçado de um item de investimento para outro, num mesmo mês.
+          Solicita a transferência do orçado de um item para outro, num mesmo mês — a mudança só é
+          aplicada depois de aprovada pelo administrador. Acompanhe o status em{" "}
+          <Link to="/solicitacoes-remanejamento" className="underline">
+            Solicitações de Remanejamento
+          </Link>
+          .
         </p>
       </div>
 
       {congelada && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-          <Lock className="h-4 w-4 shrink-0" /> Esta safra está CONGELADA. Não é possível remanejar.
+          <Lock className="h-4 w-4 shrink-0" /> Esta safra está CONGELADA. Não é possível solicitar remanejamento.
         </div>
       )}
       {!isGestor && !congelada && (
         <div className="flex items-center gap-2 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
-          <AlertTriangle className="h-4 w-4 shrink-0" /> Faça login com perfil GESTOR para remanejar verba.
+          <AlertTriangle className="h-4 w-4 shrink-0" /> Faça login com perfil GESTOR para solicitar remanejamento.
         </div>
       )}
 
       <Card>
         <CardContent className="p-4 space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Fazenda / unidade *</label>
+            <Select value={centroCustoId} onValueChange={handleFazendaChange} disabled={!editavel}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a fazenda/unidade" />
+              </SelectTrigger>
+              <SelectContent>
+                {(centros.data ?? []).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.nome} — {c.atividade}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground">Item de origem *</label>
-              <Select value={itemOrigemId} onValueChange={setItemOrigemId} disabled={!editavel}>
+              <Select
+                value={itemOrigemId}
+                onValueChange={setItemOrigemId}
+                disabled={!editavel || !centroCustoId}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="De onde sai a verba" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(itens.data ?? []).map((item) => (
+                  {itensDaFazenda.map((item) => (
                     <SelectItem key={item.id} value={item.id}>
                       {itemLabel.get(item.id)}
                     </SelectItem>
@@ -182,12 +214,16 @@ export default function RemanejamentoVerba() {
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">Item de destino *</label>
-              <Select value={itemDestinoId} onValueChange={setItemDestinoId} disabled={!editavel}>
+              <Select
+                value={itemDestinoId}
+                onValueChange={setItemDestinoId}
+                disabled={!editavel || !centroCustoId}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Para onde vai a verba" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(itens.data ?? [])
+                  {itensDaFazenda
                     .filter((item) => item.id !== itemOrigemId)
                     .map((item) => (
                       <SelectItem key={item.id} value={item.id}>
@@ -216,7 +252,7 @@ export default function RemanejamentoVerba() {
               </Select>
               {saldoOrigem !== null && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Saldo orçado atual do item de origem neste mês: {moeda(saldoOrigem)}
+                  Saldo orçado disponível do item de origem neste mês: {moeda(saldoOrigem)}
                 </p>
               )}
             </div>
@@ -231,10 +267,10 @@ export default function RemanejamentoVerba() {
             </div>
           </div>
 
-          {saldoOrigem !== null && valorNumerico > saldoOrigem && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              Atenção: o valor é maior que o saldo orçado atual do item de origem neste mês — o item
-              ficará com saldo negativo nesta competência.
+          {excedeSaldo && (
+            <p className="text-xs text-destructive">
+              O valor é maior que o saldo orçado disponível do item de origem neste mês
+              ({moeda(saldoOrigem ?? 0)}) — reduza o valor ou escolha outro item/mês.
             </p>
           )}
 
@@ -257,58 +293,12 @@ export default function RemanejamentoVerba() {
           <div className="flex justify-end">
             <Button
               className="gap-1.5"
-              onClick={() => remanejar.mutate()}
-              disabled={!podeRemanejar || remanejar.isPending}
+              onClick={() => solicitar.mutate()}
+              disabled={!podeSolicitar || solicitar.isPending}
             >
-              <ArrowLeftRight className="h-4 w-4" /> Remanejar
+              <ArrowLeftRight className="h-4 w-4" /> Solicitar remanejamento
             </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Data</TableHead>
-                <TableHead>De</TableHead>
-                <TableHead>Para</TableHead>
-                <TableHead>Mês</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead>Motivo</TableHead>
-                <TableHead>Usuário</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(historico.data ?? []).map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="whitespace-nowrap">
-                    {new Date(r.created_at).toLocaleDateString("pt-BR")}
-                  </TableCell>
-                  <TableCell className="max-w-[220px] truncate">
-                    {itemLabel.get(r.item_origem_id) ?? r.item_origem_id}
-                  </TableCell>
-                  <TableCell className="max-w-[220px] truncate">
-                    {itemLabel.get(r.item_destino_id) ?? r.item_destino_id}
-                  </TableCell>
-                  <TableCell>{competenciaLabel(r.competencia)}</TableCell>
-                  <TableCell className="text-right">{moeda(r.valor)}</TableCell>
-                  <TableCell className="max-w-[260px] truncate" title={r.motivo}>
-                    {r.motivo}
-                  </TableCell>
-                  <TableCell>{r.usuario ?? "—"}</TableCell>
-                </TableRow>
-              ))}
-              {(historico.data ?? []).length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
-                    Nenhum remanejamento registrado nesta safra.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
         </CardContent>
       </Card>
     </div>

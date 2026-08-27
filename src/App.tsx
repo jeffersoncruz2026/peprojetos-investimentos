@@ -13,6 +13,7 @@ import CentroCustoDetalhe from "./pages/CentroCustoDetalhe";
 import ItemDetalhe from "./pages/ItemDetalhe";
 import Orcamento from "./pages/Orcamento";
 import RemanejamentoVerba from "./pages/RemanejamentoVerba";
+import SolicitacoesRemanejamento from "./pages/SolicitacoesRemanejamento";
 import ImportarRealizado from "./pages/ImportarRealizado";
 import Pendencias from "./pages/Pendencias";
 import Relatorios from "./pages/Relatorios";
@@ -39,6 +40,7 @@ const App = () => (
                   <Route path="/itens/:id" element={<ItemDetalhe />} />
                   <Route path="/orcamento" element={<Orcamento />} />
                   <Route path="/remanejamento" element={<RemanejamentoVerba />} />
+                  <Route path="/solicitacoes-remanejamento" element={<SolicitacoesRemanejamento />} />
                   <Route path="/importar" element={<ImportarRealizado />} />
                   <Route path="/pendencias" element={<Pendencias />} />
                   <Route path="/relatorios" element={<Relatorios />} />
