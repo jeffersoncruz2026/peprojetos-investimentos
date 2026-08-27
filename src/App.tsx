@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "@/components/Layout";
+import RequireAuth from "@/components/RequireAuth";
 import { SafraProvider } from "@/hooks/useSafra";
 import { AuthProvider } from "@/hooks/useAuth";
 import Home from "./pages/Home";
