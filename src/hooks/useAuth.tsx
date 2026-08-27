@@ -11,14 +11,17 @@ interface AuthContextValue {
   isGestor: boolean;
   usuarioAtual: string;
   signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUpWithPassword: (
+    email: string,
+    password: string
+  ) => Promise<{ error: string | null; precisaConfirmar: boolean }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function roleFromSession(session: Session | null): Role {
-  // Sem sessão, o app opera como GESTOR por padrão (sem exigir login).
-  if (!session) return "GESTOR";
+  if (!session) return "LEITURA";
   const metaRole = (session.user.app_metadata?.role || session.user.user_metadata?.role) as
     | Role
     | undefined;
@@ -34,12 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -48,9 +51,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const usuarioAtual = session?.user.email ?? GESTOR_PADRAO_EMAIL;
 
   async function signInWithPassword(email: string, password: string) {
-    if (!supabaseConfigured) return { error: "Supabase não configurado." };
+    if (!supabaseConfigured) return { error: "Backend não configurado." };
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error?.message ?? null };
+  }
+
+  async function signUpWithPassword(email: string, password: string) {
+    if (!supabaseConfigured) return { error: "Backend não configurado.", precisaConfirmar: false };
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    return { error: error?.message ?? null, precisaConfirmar: !error && !data.session };
   }
 
   async function signOut() {
@@ -64,9 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         role,
         loading,
-        isGestor: role === "GESTOR",
+        isGestor: !!session && role === "GESTOR",
         usuarioAtual,
         signInWithPassword,
+        signUpWithPassword,
         signOut,
       }}
     >
