@@ -154,7 +154,6 @@ export type Database = {
         Row: {
           centro_custo_id: string
           codigo: string
-          codigo_rm_projeto: string | null
           created_at: string
           descricao: string
           id: string
@@ -168,7 +167,6 @@ export type Database = {
         Insert: {
           centro_custo_id: string
           codigo: string
-          codigo_rm_projeto?: string | null
           created_at?: string
           descricao: string
           id?: string
@@ -182,7 +180,6 @@ export type Database = {
         Update: {
           centro_custo_id?: string
           codigo?: string
-          codigo_rm_projeto?: string | null
           created_at?: string
           descricao?: string
           id?: string
