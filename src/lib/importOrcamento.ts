@@ -19,6 +19,13 @@ import { parseCompetenciaLabel } from "@/lib/format";
 // fazenda/unidade (sem um código próprio) — nesse caso o vínculo com um
 // centro_custo já cadastrado é feito pelo nome, não por código.
 export interface LinhaOrcamentoBruta {
+  // Identifica a qual item cada linha pertence, calculado aqui (não
+  // recalculado a partir do conteúdo depois) para não depender de Código
+  // ser único: no formato largo cada linha da planilha JÁ é um item
+  // inteiro (com os 12 meses na mesma linha), então cada linha física vira
+  // seu próprio grupo mesmo que o Código venha em branco ou repetido —
+  // ver a nota em parseArquivoOrcamento.
+  chaveGrupo: string;
   idItem: string;
   codigoCc: string;
   nomeCc: string;
@@ -73,7 +80,7 @@ export async function parseArquivoOrcamento(file: File): Promise<LinhaOrcamentoB
 
   const linhas: LinhaOrcamentoBruta[] = [];
 
-  for (const row of rows) {
+  rows.forEach((row, indiceLinha) => {
     const campos: Partial<Record<CampoTexto, string>> = {};
     let competenciaLonga = "";
     let valorLongo = 0;
@@ -90,7 +97,7 @@ export async function parseArquivoOrcamento(file: File): Promise<LinhaOrcamentoB
       }
     }
 
-    if (!campos.item) continue;
+    if (!campos.item) return;
     const comum = {
       idItem: campos.idItem ?? "",
       codigoCc: campos.codigoCc ?? "",
@@ -99,16 +106,25 @@ export async function parseArquivoOrcamento(file: File): Promise<LinhaOrcamentoB
       codigoProjeto: campos.codigoProjeto ?? "",
       item: campos.item,
     };
-    if (!comum.nomeCc) continue;
+    if (!comum.nomeCc) return;
 
     if (colunasMes.length > 0) {
+      // Formato largo: esta linha da planilha já é um item completo (com
+      // todos os meses). Nunca funde com outra linha, mesmo que Código
+      // venha em branco ou se repita por engano — cada linha física é um
+      // item, ponto final.
+      const chaveGrupo = `linha-${indiceLinha}`;
       for (const { cabecalho, competencia } of colunasMes) {
-        linhas.push({ ...comum, competencia, valor: parseValorCell(row[cabecalho]) });
+        linhas.push({ ...comum, chaveGrupo, competencia, valor: parseValorCell(row[cabecalho]) });
       }
     } else if (competenciaLonga) {
-      linhas.push({ ...comum, competencia: competenciaLonga, valor: valorLongo });
+      // Formato longo: várias linhas (uma por mês) representam o MESMO
+      // item de propósito, então continuam se agrupando por identidade de
+      // conteúdo (Código, ou centro de custo + descrição).
+      const chaveGrupo = comum.idItem || `${comum.codigoCc}|${comum.nomeCc}|${comum.item.toLowerCase().trim()}`;
+      linhas.push({ ...comum, chaveGrupo, competencia: competenciaLonga, valor: valorLongo });
     }
-  }
+  });
 
   return linhas;
 }
