@@ -31,7 +31,7 @@ import {
   fetchLancamentosPorItem,
 } from "@/lib/api";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
-import { competenciaLabel, dataBr, moeda, percentual } from "@/lib/format";
+import { competenciaLabel, dataBr, mensagemErro, moeda, percentual } from "@/lib/format";
 import type { ItemStatus } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 
@@ -107,7 +107,7 @@ export default function ItemDetalhe() {
       qc.invalidateQueries({ queryKey: ["item-orcamento", id] });
       qc.invalidateQueries({ queryKey: ["item-acumulado"] });
     },
-    onError: (e: Error) => toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: "Erro ao salvar", description: mensagemErro(e), variant: "destructive" }),
   });
 
   const totais = (mensal.data ?? []).reduce(
@@ -326,7 +326,7 @@ function NovoCompromisso({ itemId }: { itemId: string }) {
       qc.invalidateQueries({ queryKey: ["compromissos", itemId] });
       qc.invalidateQueries({ queryKey: ["item-acumulado"] });
     },
-    onError: (e: Error) => toast({ title: "Erro ao adicionar", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: "Erro ao adicionar", description: mensagemErro(e), variant: "destructive" }),
   });
 
   return (

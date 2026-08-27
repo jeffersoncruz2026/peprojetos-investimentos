@@ -147,15 +147,25 @@ export async function fetchOrcamentoMensalPorItens(itemIds: string[]): Promise<O
   return (data ?? []) as OrcamentoMensal[];
 }
 
-export async function fetchChavesExistentes(chaves: string[]): Promise<Set<string>> {
-  if (chaves.length === 0) return new Set();
+// Busca as chave_rm já existentes pelo período (data_lancamento) do arquivo
+// sendo importado, em vez de mandar as milhares de chaves do arquivo num
+// .in(...) — um extrato real tem dezenas de milhares de linhas, e um filtro
+// .in() desse tamanho estoura o limite de tamanho da URL da requisição.
+export async function fetchChavesExistentesPorPeriodo(dataMin: string, dataMax: string): Promise<Set<string>> {
   const found = new Set<string>();
-  const CHUNK = 500;
-  for (let i = 0; i < chaves.length; i += CHUNK) {
-    const slice = chaves.slice(i, i + CHUNK);
-    const { data, error } = await supabase.from("realizado").select("chave_rm").in("chave_rm", slice);
+  const PAGE = 1000;
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("realizado")
+      .select("chave_rm")
+      .gte("data_lancamento", dataMin)
+      .lte("data_lancamento", dataMax)
+      .range(from, from + PAGE - 1);
     if (error) throw error;
     for (const row of data ?? []) found.add(row.chave_rm as string);
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
   }
   return found;
 }

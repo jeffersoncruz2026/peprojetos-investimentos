@@ -1,3 +1,19 @@
+// Erros do Supabase (PostgrestError, AuthError etc.) são objetos simples com
+// .message, não instâncias de Error — "e instanceof Error ? e.message :
+// String(e)" produz "[object Object]" para eles. Isso cobre esse caso.
+export function mensagemErro(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && "message" in e && typeof e.message === "string") {
+    return e.message;
+  }
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 export function moeda(v: number | string | null | undefined) {
   const n = Number(v || 0);
   return n.toLocaleString("pt-BR", {

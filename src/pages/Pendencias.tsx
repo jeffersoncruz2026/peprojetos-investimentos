@@ -23,7 +23,7 @@ import {
   fetchPendencias,
   vincularItemEmLote,
 } from "@/lib/api";
-import { dataBr, moeda } from "@/lib/format";
+import { dataBr, mensagemErro, moeda } from "@/lib/format";
 import type { Atividade } from "@/lib/types";
 import { supabaseConfigured } from "@/lib/supabaseClient";
 
@@ -108,7 +108,7 @@ function AbaCentroCusto() {
       qc.invalidateQueries({ queryKey: ["pendencias"] });
       qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
     },
-    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: "Erro", description: mensagemErro(e), variant: "destructive" }),
   });
 
   if (grupos.length === 0) {
@@ -226,7 +226,7 @@ function AbaItem() {
       qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
       qc.invalidateQueries({ queryKey: ["itens-com-codigo-projeto"] });
     },
-    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: "Erro", description: mensagemErro(e), variant: "destructive" }),
   });
 
   function toggle(id: string) {

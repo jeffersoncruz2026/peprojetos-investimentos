@@ -17,7 +17,7 @@ import { useSafra } from "@/hooks/useSafra";
 import { useToast } from "@/hooks/use-toast";
 import { fetchCentrosCusto, fetchItensOrcamentoPorSafra, fetchOrcamentoMensalPorItens } from "@/lib/api";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
-import { competenciaLabel, competenciasSafra, moeda } from "@/lib/format";
+import { competenciaLabel, competenciasSafra, mensagemErro, moeda } from "@/lib/format";
 
 interface PendingEdit {
   itemOrcamentoId: string;
@@ -115,8 +115,8 @@ export default function Orcamento() {
       qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
       qc.invalidateQueries({ queryKey: ["curva-mensal"] });
     },
-    onError: (e: Error) => {
-      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
+    onError: (e: unknown) => {
+      toast({ title: "Erro ao salvar", description: mensagemErro(e), variant: "destructive" });
       setResetTick((t) => t + 1);
     },
   });
