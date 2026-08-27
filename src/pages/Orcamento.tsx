@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Lock, Plus } from "lucide-react";
+import * as XLSX from "xlsx";
+import { AlertTriangle, Download, Lock, Pencil, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSafra } from "@/hooks/useSafra";
 import { useToast } from "@/hooks/use-toast";
 import {
+  atualizarItemOrcamento,
   criarCentroCusto,
   criarItemOrcamento,
   fetchCentrosCusto,
@@ -32,7 +34,7 @@ import {
 } from "@/lib/api";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
 import { competenciaLabel, competenciasSafra, mensagemErro, moeda } from "@/lib/format";
-import { ATIVIDADES, type CentroCusto } from "@/lib/types";
+import { ATIVIDADES, type CentroCusto, type ItemOrcamento } from "@/lib/types";
 import { ImportarOrcamentoDialog } from "@/components/ImportarOrcamentoDialog";
 
 interface PendingEdit {
@@ -80,6 +82,12 @@ export default function Orcamento() {
   const centroNome = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of centros.data ?? []) map.set(c.id, c.nome);
+    return map;
+  }, [centros.data]);
+
+  const centrosAtividade = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of centros.data ?? []) map.set(c.id, c.atividade);
     return map;
   }, [centros.data]);
 
@@ -163,6 +171,29 @@ export default function Orcamento() {
 
   const totalGeral = (itens.data ?? []).reduce((s, i) => s + totalPorItem(i.id), 0);
 
+  function exportarExcel() {
+    const linhas = (itens.data ?? []).map((item) => {
+      const row: Record<string, string | number> = {
+        Código: item.codigo,
+        CODCCUSTO: item.codigo_rm_projeto ?? "",
+        Item: item.descricao,
+        "Centro de Custo": centroNome.get(item.centro_custo_id) ?? "",
+        Atividade: centrosAtividade.get(item.centro_custo_id) ?? "",
+      };
+      for (const c of competencias) {
+        row[competenciaLabel(c)] = valores.get(`${item.id}_${c}`) ?? 0;
+      }
+      row["Total"] = totalPorItem(item.id);
+      return row;
+    });
+    const worksheet = XLSX.utils.json_to_sheet(linhas);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Orçamento");
+    XLSX.writeFile(workbook, `orcamento_${safraId.replace("/", "-")}.xlsx`);
+  }
+
+  const [itemEditando, setItemEditando] = useState<ItemOrcamento | null>(null);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -170,16 +201,21 @@ export default function Orcamento() {
           <h1 className="text-2xl lg:text-3xl font-bold text-foreground">Orçamento — Safra {safraId}</h1>
           <p className="text-sm text-muted-foreground">Grade editável do orçado mês a mês</p>
         </div>
-        {editavel && (
-          <div className="flex flex-wrap gap-2">
-            <ImportarOrcamentoDialog safraId={safraId} centros={centros.data ?? []} itens={itens.data ?? []} />
-            <NovoItemOrcamento
-              safraId={safraId}
-              primeiraCompetencia={competencias[0]}
-              centros={centros.data ?? []}
-            />
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="gap-1.5" onClick={exportarExcel}>
+            <Download className="h-4 w-4" /> Exportar Excel
+          </Button>
+          {editavel && (
+            <>
+              <ImportarOrcamentoDialog safraId={safraId} centros={centros.data ?? []} itens={itens.data ?? []} />
+              <NovoItemOrcamento
+                safraId={safraId}
+                primeiraCompetencia={competencias[0]}
+                centros={centros.data ?? []}
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {congelada && (
@@ -213,10 +249,24 @@ export default function Orcamento() {
               {(itens.data ?? []).map((item) => (
                 <tr key={item.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                   <td className="sticky left-0 bg-card py-1.5 px-3">
-                    <p className="font-medium text-foreground truncate max-w-[240px]">{item.descricao}</p>
-                    <p className="text-xs text-muted-foreground truncate max-w-[240px]">
-                      {item.codigo} · {centroNome.get(item.centro_custo_id) ?? ""}
-                    </p>
+                    <div className="flex items-start gap-1.5">
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate max-w-[220px]">{item.descricao}</p>
+                        <p className="text-xs text-muted-foreground truncate max-w-[220px]">
+                          {item.codigo} · {centroNome.get(item.centro_custo_id) ?? ""}
+                        </p>
+                      </div>
+                      {editavel && (
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+                          title="Editar item"
+                          onClick={() => setItemEditando(item)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                   {competencias.map((c) => {
                     const key = `${item.id}_${c}`;
@@ -285,7 +335,100 @@ export default function Orcamento() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {itemEditando && (
+        <EditarItemOrcamento
+          item={itemEditando}
+          centros={centros.data ?? []}
+          onClose={() => setItemEditando(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function EditarItemOrcamento({
+  item,
+  centros,
+  onClose,
+}: {
+  item: ItemOrcamento;
+  centros: CentroCusto[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [codccusto, setCodccusto] = useState(item.codigo_rm_projeto ?? "");
+  const [nomecusto, setNomecusto] = useState(item.descricao);
+  const [centroCustoId, setCentroCustoId] = useState(item.centro_custo_id);
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      atualizarItemOrcamento({
+        id: item.id,
+        codigoRmProjeto: codccusto.trim(),
+        descricao: nomecusto.trim(),
+        centroCustoId,
+      }),
+    onSuccess: () => {
+      toast({ title: "Item atualizado." });
+      onClose();
+      qc.invalidateQueries({ queryKey: ["itens-orcamento", item.safra_id] });
+      qc.invalidateQueries({ queryKey: ["item-acumulado"] });
+      qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
+      qc.invalidateQueries({ queryKey: ["itens-com-codigo-projeto"] });
+    },
+    onError: (e: unknown) =>
+      toast({ title: "Erro ao salvar", description: mensagemErro(e), variant: "destructive" }),
+  });
+
+  const podeSalvar = codccusto.trim() && nomecusto.trim() && centroCustoId;
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Editar item de orçamento</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">CODCCUSTO (código do projeto no RM) *</label>
+            <Input value={codccusto} onChange={(e) => setCodccusto(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">NOMECUSTO (descrição do item) *</label>
+            <Input value={nomecusto} onChange={(e) => setNomecusto(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Área (centro de custo) *</label>
+            <Select value={centroCustoId} onValueChange={setCentroCustoId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a fazenda/unidade" />
+              </SelectTrigger>
+              <SelectContent>
+                {centros.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.nome} — {c.atividade}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Para alterar os valores mensais, edite direto na grade — mudanças aqui são só de
+            cadastro (código, nome e área).
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={() => salvar.mutate()} disabled={!podeSalvar || salvar.isPending}>
+            Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

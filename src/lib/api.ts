@@ -201,6 +201,37 @@ export async function criarItemOrcamento(params: {
   });
 }
 
+export async function atualizarItemOrcamento(params: {
+  id: string;
+  codigoRmProjeto: string;
+  descricao: string;
+  centroCustoId: string;
+}): Promise<void> {
+  const { data: existente, error: existeError } = await supabase
+    .from("item_orcamento")
+    .select("id, descricao")
+    .eq("codigo_rm_projeto", params.codigoRmProjeto)
+    .neq("id", params.id)
+    .maybeSingle();
+  if (existeError) throw existeError;
+  if (existente) {
+    throw new Error(
+      `O CODCCUSTO ${params.codigoRmProjeto} já está cadastrado no item "${existente.descricao}".`
+    );
+  }
+
+  const { error } = await supabase
+    .from("item_orcamento")
+    .update({
+      codigo_rm_projeto: params.codigoRmProjeto,
+      descricao: params.descricao,
+      centro_custo_id: params.centroCustoId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", params.id);
+  if (error) throw error;
+}
+
 export async function fetchOrcamentoMensalPorItens(itemIds: string[]): Promise<OrcamentoMensal[]> {
   if (itemIds.length === 0) return [];
   const { data, error } = await supabase

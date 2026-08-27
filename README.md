@@ -92,7 +92,9 @@ passa a ver tudo em modo somente leitura.
 - **Orçamento** — grade editável (itens x meses), com histórico de revisão e bloqueio quando a
   safra está CONGELADA. Cadastro de item novo (CODCCUSTO, NOMECUSTO, área/centro de custo — com
   opção de cadastrar uma unidade nova na hora — e valor orçado) e cadastro em lote por planilha,
-  ambos a partir do botão no topo da tela.
+  ambos a partir do botão no topo da tela. Cada item já cadastrado pode ser editado (ícone de
+  lápis ao lado da descrição — código, nome e área; os valores mensais continuam se editando
+  direto na grade) e a grade inteira pode ser exportada para Excel a qualquer momento.
 - **Importar Realizado** — upload do extrato de custos por projeto do RM (.xlsx/.csv), preview
   com vinculadas/duplicadas/sem item antes de gravar.
 - **Pendências** — lançamentos sem item vinculado (vínculo em lote, aprendido para as próximas
