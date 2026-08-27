@@ -29,10 +29,16 @@ Falta só carregar os dados da safra 2026/2027 (a migração cria apenas o regis
 4. **Rode `supabase/sql/04_remanejamento.sql`** — cria a tabela `remanejamento` e a função
    `f_remanejar_verba`, usadas pela tela Remanejamento de Verba. Sem esse arquivo, aquela tela
    quebra.
+5. **Rode `supabase/sql/05_solicitacoes_remanejamento.sql`** — acrescenta o fluxo de aprovação
+   (`status`, `decidido_por`, `decidido_em`, `motivo_decisao` em `remanejamento`, e as funções
+   `f_solicitar_remanejamento` / `f_aprovar_remanejamento` / `f_rejeitar_remanejamento`, no lugar
+   de `f_remanejar_verba`). Sem esse arquivo, as telas Remanejamento de Verba e Solicitações de
+   Remanejamento quebram.
 
 Se você conectar este repositório a um Supabase novo do zero (fora do Lovable), rode
 `supabase/sql/01_supabase_schema.sql`, depois `02_safra_aware_views.sql`, depois
-`03_projeto_rm.sql`, depois `04_remanejamento.sql`, antes do passo de carga acima.
+`03_projeto_rm.sql`, depois `04_remanejamento.sql`, depois `05_solicitacoes_remanejamento.sql`,
+antes do passo de carga acima.
 
 ## Importação do realizado
 
@@ -85,6 +91,12 @@ Para restringir o acesso no futuro (ex.: dar a alguém apenas leitura), use o lo
 Supabase Auth normalmente: um usuário autenticado com `role: "LEITURA"` no `user_metadata`
 passa a ver tudo em modo somente leitura.
 
+Só o e-mail configurado em `ADMIN_EMAIL` (`src/lib/config.ts`, hoje o mesmo de
+`GESTOR_PADRAO_EMAIL`) pode aprovar ou rejeitar solicitações de remanejamento — checado tanto na
+UI quanto dentro das funções `f_aprovar_remanejamento`/`f_rejeitar_remanejamento` no banco, já que
+é uma fronteira de autoridade real (ao contrário do resto do app, que só distingue GESTOR/LEITURA
+no cliente).
+
 ## Telas
 
 - **Home** — cartões de orçado/realizado/comprometido/saldo, curva mensal, orçado x realizado
@@ -106,11 +118,21 @@ passa a ver tudo em modo somente leitura.
   Atividade, Item, Competência, Valor Orçado`). CODCCUSTO é opcional; "Centro de Custo" pode ser
   só o nome (sem código próprio) — o vínculo com uma unidade já cadastrada é então feito pelo
   nome.
-- **Remanejamento de Verba** — move o orçado de um item para outro num mesmo mês (valor, mês e
-  motivo obrigatórios), respeitando o mesmo bloqueio de safra CONGELADA da grade de Orçamento.
-  Debita a origem e credita o destino de forma atômica (função `f_remanejar_verba` no banco),
-  grava o histórico por item em `orcamento_revisao` (mesma tabela usada pela grade) e mantém um
-  histórico próprio de remanejamentos na tela.
+- **Remanejamento de Verba** — solicita a transferência do orçado de um item para outro num
+  mesmo mês (fazenda/unidade, item de origem, item de destino, mês e motivo obrigatórios; os
+  dropdowns de item só listam a fazenda selecionada, para não misturar investimentos de unidades
+  diferentes), respeitando o mesmo bloqueio de safra CONGELADA da grade de Orçamento. Trava
+  (não deixa solicitar) se o valor pedido for maior que o saldo orçado disponível no item de
+  origem naquele mês — validado tanto na tela quanto na função `f_solicitar_remanejamento` no
+  banco. A solicitação fica com status PENDENTE até ser decidida em Solicitações de
+  Remanejamento; não move o orçado sozinha.
+- **Solicitações de Remanejamento** — fila de solicitações da safra (filtro por status:
+  pendentes/aprovados/rejeitados/todos). O administrador (`ADMIN_EMAIL`) aprova (debita a origem e
+  credita o destino de forma atômica via `f_aprovar_remanejamento`, gravando o histórico por item
+  em `orcamento_revisao`, mesma tabela usada pela grade de Orçamento) ou rejeita com motivo
+  obrigatório (`f_rejeitar_remanejamento`); a validação de saldo disponível é refeita na aprovação,
+  já que pode ter mudado desde a solicitação. Qualquer usuário logado pode acompanhar o status das
+  solicitações nesta tela, mas só o administrador vê as ações de aprovar/rejeitar.
 - **Importar Realizado** — upload do extrato de custos por projeto do RM (.xlsx/.csv), preview
   com vinculadas/duplicadas/sem item antes de gravar.
 - **Pendências** — lançamentos sem item vinculado (vínculo em lote, aprendido para as próximas

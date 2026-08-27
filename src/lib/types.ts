@@ -84,6 +84,8 @@ export interface OrcamentoRevisao {
   created_at: string;
 }
 
+export type RemanejamentoStatus = "PENDENTE" | "APROVADO" | "REJEITADO";
+
 export interface Remanejamento {
   id: string;
   safra_id: string;
@@ -94,6 +96,10 @@ export interface Remanejamento {
   motivo: string;
   usuario: string | null;
   created_at: string;
+  status: RemanejamentoStatus;
+  decidido_por: string | null;
+  decidido_em: string | null;
+  motivo_decisao: string | null;
 }
 
 export interface Importacao {

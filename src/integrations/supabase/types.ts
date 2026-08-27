@@ -406,33 +406,45 @@ export type Database = {
         Row: {
           competencia: string
           created_at: string
+          decidido_em: string | null
+          decidido_por: string | null
           id: string
           item_destino_id: string
           item_origem_id: string
           motivo: string
+          motivo_decisao: string | null
           safra_id: string
+          status: string
           usuario: string | null
           valor: number
         }
         Insert: {
           competencia: string
           created_at?: string
+          decidido_em?: string | null
+          decidido_por?: string | null
           id?: string
           item_destino_id: string
           item_origem_id: string
           motivo: string
+          motivo_decisao?: string | null
           safra_id: string
+          status?: string
           usuario?: string | null
           valor: number
         }
         Update: {
           competencia?: string
           created_at?: string
+          decidido_em?: string | null
+          decidido_por?: string | null
           id?: string
           item_destino_id?: string
           item_origem_id?: string
           motivo?: string
+          motivo_decisao?: string | null
           safra_id?: string
+          status?: string
           usuario?: string | null
           valor?: number
         }
@@ -625,7 +637,7 @@ export type Database = {
           realizado_mes: number
         }[]
       }
-      f_remanejar_verba: {
+      f_solicitar_remanejamento: {
         Args: {
           p_competencia: string
           p_item_destino_id: string
@@ -635,6 +647,14 @@ export type Database = {
           p_usuario: string
           p_valor: number
         }
+        Returns: string
+      }
+      f_aprovar_remanejamento: {
+        Args: { p_remanejamento_id: string; p_usuario: string }
+        Returns: undefined
+      }
+      f_rejeitar_remanejamento: {
+        Args: { p_remanejamento_id: string; p_usuario: string; p_motivo: string }
         Returns: undefined
       }
     }

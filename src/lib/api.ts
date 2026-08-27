@@ -233,11 +233,11 @@ export async function atualizarItemOrcamento(params: {
   if (error) throw error;
 }
 
-// Move o valor de um item de orçamento para outro, num mesmo mês — debita a
-// origem, credita o destino, e grava o histórico em orcamento_revisao (uma
-// linha em cada item) e em remanejamento, tudo numa função Postgres (RPC)
-// para garantir atomicidade entre os dois itens.
-export async function remanejarVerba(params: {
+// Registra uma solicitação de remanejamento (status PENDENTE) — só move o
+// orçado quando o administrador aprova (aprovarRemanejamento). Bloqueia no
+// banco se o valor pedido for maior que o saldo orçado atual do item de
+// origem naquele mês.
+export async function solicitarRemanejamento(params: {
   safraId: string;
   itemOrigemId: string;
   itemDestinoId: string;
@@ -246,7 +246,7 @@ export async function remanejarVerba(params: {
   motivo: string;
   usuario: string | null;
 }): Promise<void> {
-  const { error } = await supabase.rpc("f_remanejar_verba", {
+  const { error } = await supabase.rpc("f_solicitar_remanejamento", {
     p_safra_id: params.safraId,
     p_item_origem_id: params.itemOrigemId,
     p_item_destino_id: params.itemDestinoId,
@@ -254,6 +254,32 @@ export async function remanejarVerba(params: {
     p_valor: params.valor,
     p_motivo: params.motivo,
     p_usuario: params.usuario,
+  });
+  if (error) throw error;
+}
+
+// Aprova uma solicitação PENDENTE: debita o item de origem, credita o
+// destino e grava o histórico em orcamento_revisao. Só o e-mail
+// configurado em ADMIN_EMAIL pode aprovar — a função no banco recusa
+// qualquer outro usuário, então isGestor/isAdmin na UI é só conveniência,
+// não a única trava.
+export async function aprovarRemanejamento(remanejamentoId: string, usuario: string): Promise<void> {
+  const { error } = await supabase.rpc("f_aprovar_remanejamento", {
+    p_remanejamento_id: remanejamentoId,
+    p_usuario: usuario,
+  });
+  if (error) throw error;
+}
+
+export async function rejeitarRemanejamento(
+  remanejamentoId: string,
+  usuario: string,
+  motivo: string
+): Promise<void> {
+  const { error } = await supabase.rpc("f_rejeitar_remanejamento", {
+    p_remanejamento_id: remanejamentoId,
+    p_usuario: usuario,
+    p_motivo: motivo,
   });
   if (error) throw error;
 }

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
-import { GESTOR_PADRAO_EMAIL } from "@/lib/config";
+import { ADMIN_EMAIL, GESTOR_PADRAO_EMAIL } from "@/lib/config";
 import type { Role } from "@/lib/types";
 
 interface AuthContextValue {
@@ -9,6 +9,7 @@ interface AuthContextValue {
   role: Role;
   loading: boolean;
   isGestor: boolean;
+  isAdmin: boolean;
   usuarioAtual: string;
   signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>;
   signUpWithPassword: (
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         loading,
         isGestor: !!session && role === "GESTOR",
+        isAdmin: !!session && session.user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase(),
         usuarioAtual,
         signInWithPassword,
         signUpWithPassword,
