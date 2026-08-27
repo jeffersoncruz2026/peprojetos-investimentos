@@ -1,0 +1,1 @@
+alter view public.v_pendencias set (security_invoker = on);
