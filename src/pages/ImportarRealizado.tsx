@@ -8,14 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { useSafra } from "@/hooks/useSafra";
 import { useToast } from "@/hooks/use-toast";
-import { fetchChavesExistentes, fetchItensComCodigoProjeto, confirmarImportacao } from "@/lib/api";
+import { fetchChavesExistentesPorPeriodo, fetchItensComCodigoProjeto, confirmarImportacao } from "@/lib/api";
 import {
   montarChavesRm,
   parseArquivoRealizado,
   primeiroDiaDoMes,
   type LinhaRealizadoPreview,
 } from "@/lib/importRealizado";
-import { dataBr, moeda } from "@/lib/format";
+import { dataBr, mensagemErro, moeda } from "@/lib/format";
 import { supabaseConfigured } from "@/lib/supabaseClient";
 
 const SITUACAO_LABEL: Record<LinhaRealizadoPreview["situacao"], string> = {
@@ -56,8 +56,14 @@ export default function ImportarRealizado() {
         (itensComProjeto.data ?? []).map((i) => [i.codigo_rm_projeto, i])
       );
 
+      if (brutas.length === 0) {
+        throw new Error(
+          "Nenhuma linha reconhecida no arquivo. Confira se as colunas DATA e CODCCUSTO existem."
+        );
+      }
+      const datas = brutas.map((r) => r.data).sort();
       const chaves = montarChavesRm(brutas);
-      const existentes = await fetchChavesExistentes(chaves);
+      const existentes = await fetchChavesExistentesPorPeriodo(datas[0], datas[datas.length - 1]);
 
       const linhas: LinhaRealizadoPreview[] = brutas.map((linha, idx) => {
         const chaveRm = chaves[idx];
@@ -79,7 +85,7 @@ export default function ImportarRealizado() {
     } catch (e) {
       toast({
         title: "Erro ao ler arquivo",
-        description: e instanceof Error ? e.message : String(e),
+        description: mensagemErro(e),
         variant: "destructive",
       });
       setPreview(null);
@@ -133,7 +139,7 @@ export default function ImportarRealizado() {
       qc.invalidateQueries({ queryKey: ["curva-mensal"] });
       qc.invalidateQueries({ queryKey: ["pendencias"] });
     },
-    onError: (e: Error) => toast({ title: "Erro ao importar", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: "Erro ao importar", description: mensagemErro(e), variant: "destructive" }),
   });
 
   if (!isGestor) {
