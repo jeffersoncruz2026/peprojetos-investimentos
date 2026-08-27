@@ -84,6 +84,18 @@ export interface OrcamentoRevisao {
   created_at: string;
 }
 
+export interface Remanejamento {
+  id: string;
+  safra_id: string;
+  item_origem_id: string;
+  item_destino_id: string;
+  competencia: string;
+  valor: number;
+  motivo: string;
+  usuario: string | null;
+  created_at: string;
+}
+
 export interface Importacao {
   id: string;
   arquivo: string;

@@ -5,6 +5,7 @@ import type {
   ItemOrcamento,
   OrcamentoMensal,
   Realizado,
+  Remanejamento,
   VCcAcumulado,
   VCurvaMensal,
   VItemAcumulado,
@@ -230,6 +231,41 @@ export async function atualizarItemOrcamento(params: {
     })
     .eq("id", params.id);
   if (error) throw error;
+}
+
+// Move o valor de um item de orçamento para outro, num mesmo mês — debita a
+// origem, credita o destino, e grava o histórico em orcamento_revisao (uma
+// linha em cada item) e em remanejamento, tudo numa função Postgres (RPC)
+// para garantir atomicidade entre os dois itens.
+export async function remanejarVerba(params: {
+  safraId: string;
+  itemOrigemId: string;
+  itemDestinoId: string;
+  competencia: string;
+  valor: number;
+  motivo: string;
+  usuario: string | null;
+}): Promise<void> {
+  const { error } = await supabase.rpc("f_remanejar_verba", {
+    p_safra_id: params.safraId,
+    p_item_origem_id: params.itemOrigemId,
+    p_item_destino_id: params.itemDestinoId,
+    p_competencia: params.competencia,
+    p_valor: params.valor,
+    p_motivo: params.motivo,
+    p_usuario: params.usuario,
+  });
+  if (error) throw error;
+}
+
+export async function fetchRemanejamentosPorSafra(safraId: string): Promise<Remanejamento[]> {
+  const { data, error } = await supabase
+    .from("remanejamento")
+    .select("*")
+    .eq("safra_id", safraId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Remanejamento[];
 }
 
 export async function fetchOrcamentoMensalPorItens(itemIds: string[]): Promise<OrcamentoMensal[]> {

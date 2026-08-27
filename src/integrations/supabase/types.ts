@@ -402,6 +402,92 @@ export type Database = {
           },
         ]
       }
+      remanejamento: {
+        Row: {
+          competencia: string
+          created_at: string
+          id: string
+          item_destino_id: string
+          item_origem_id: string
+          motivo: string
+          safra_id: string
+          usuario: string | null
+          valor: number
+        }
+        Insert: {
+          competencia: string
+          created_at?: string
+          id?: string
+          item_destino_id: string
+          item_origem_id: string
+          motivo: string
+          safra_id: string
+          usuario?: string | null
+          valor: number
+        }
+        Update: {
+          competencia?: string
+          created_at?: string
+          id?: string
+          item_destino_id?: string
+          item_origem_id?: string
+          motivo?: string
+          safra_id?: string
+          usuario?: string | null
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "remanejamento_item_destino_id_fkey"
+            columns: ["item_destino_id"]
+            isOneToOne: false
+            referencedRelation: "item_orcamento"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "remanejamento_item_destino_id_fkey"
+            columns: ["item_destino_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_acumulado"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "remanejamento_item_destino_id_fkey"
+            columns: ["item_destino_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_mes"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "remanejamento_item_origem_id_fkey"
+            columns: ["item_origem_id"]
+            isOneToOne: false
+            referencedRelation: "item_orcamento"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "remanejamento_item_origem_id_fkey"
+            columns: ["item_origem_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_acumulado"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "remanejamento_item_origem_id_fkey"
+            columns: ["item_origem_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_mes"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "remanejamento_safra_id_fkey"
+            columns: ["safra_id"]
+            isOneToOne: false
+            referencedRelation: "safra"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       safra: {
         Row: {
           data_fim: string
@@ -538,6 +624,18 @@ export type Database = {
           realizado_acum: number
           realizado_mes: number
         }[]
+      }
+      f_remanejar_verba: {
+        Args: {
+          p_competencia: string
+          p_item_destino_id: string
+          p_item_origem_id: string
+          p_motivo: string
+          p_safra_id: string
+          p_usuario: string
+          p_valor: number
+        }
+        Returns: undefined
       }
     }
     Enums: {
