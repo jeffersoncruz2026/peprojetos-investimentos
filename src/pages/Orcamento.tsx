@@ -34,6 +34,7 @@ import {
 } from "@/lib/api";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
 import { competenciaLabel, competenciasSafra, mensagemErro, moeda } from "@/lib/format";
+import { gerarCodigoUnidade } from "@/lib/xlsxCell";
 import { ATIVIDADES, type CentroCusto, type ItemOrcamento } from "@/lib/types";
 import { ImportarOrcamentoDialog } from "@/components/ImportarOrcamentoDialog";
 
@@ -470,7 +471,7 @@ function NovoItemOrcamento({
       let ccId = centroCustoId;
       if (novaArea) {
         const cc = await criarCentroCusto({
-          codigoRm: novaAreaCodigo.trim() || gerarCodigoAuto(novaAreaNome),
+          codigoRm: novaAreaCodigo.trim() || gerarCodigoUnidade(novaAreaNome),
           nome: novaAreaNome.trim(),
           atividade: novaAreaAtividade,
         });
@@ -627,15 +628,4 @@ function NovoItemOrcamento({
       </DialogContent>
     </Dialog>
   );
-}
-
-function gerarCodigoAuto(nome: string): string {
-  const slug = nome
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 24);
-  const sufixo = Date.now().toString(36).slice(-4).toUpperCase();
-  return `${slug || "UNIDADE"}-${sufixo}`;
 }
