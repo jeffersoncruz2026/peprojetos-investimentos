@@ -137,6 +137,47 @@ export async function fetchItensComCodigoProjeto(safraId: string): Promise<ItemC
   return (data ?? []) as ItemComCodigoProjeto[];
 }
 
+export async function criarItemOrcamento(params: {
+  safraId: string;
+  codigoRmProjeto: string;
+  descricao: string;
+  centroCustoId: string;
+  competencia: string;
+  valor: number;
+}): Promise<void> {
+  const { data: existente, error: existeError } = await supabase
+    .from("item_orcamento")
+    .select("id, descricao")
+    .eq("codigo_rm_projeto", params.codigoRmProjeto)
+    .maybeSingle();
+  if (existeError) throw existeError;
+  if (existente) {
+    throw new Error(
+      `O CODCCUSTO ${params.codigoRmProjeto} já está cadastrado no item "${existente.descricao}".`
+    );
+  }
+
+  const { data: item, error: itemError } = await supabase
+    .from("item_orcamento")
+    .insert({
+      codigo: params.codigoRmProjeto,
+      codigo_rm_projeto: params.codigoRmProjeto,
+      safra_id: params.safraId,
+      centro_custo_id: params.centroCustoId,
+      descricao: params.descricao,
+    })
+    .select()
+    .single();
+  if (itemError) throw itemError;
+
+  const { error: mensalError } = await supabase.from("orcamento_mensal").insert({
+    item_orcamento_id: item.id,
+    competencia: params.competencia,
+    valor: params.valor,
+  });
+  if (mensalError) throw mensalError;
+}
+
 export async function fetchOrcamentoMensalPorItens(itemIds: string[]): Promise<OrcamentoMensal[]> {
   if (itemIds.length === 0) return [];
   const { data, error } = await supabase

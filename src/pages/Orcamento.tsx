@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Lock } from "lucide-react";
+import { AlertTriangle, Lock, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,13 +11,27 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useSafra } from "@/hooks/useSafra";
 import { useToast } from "@/hooks/use-toast";
-import { fetchCentrosCusto, fetchItensOrcamentoPorSafra, fetchOrcamentoMensalPorItens } from "@/lib/api";
+import {
+  criarItemOrcamento,
+  fetchCentrosCusto,
+  fetchItensOrcamentoPorSafra,
+  fetchOrcamentoMensalPorItens,
+} from "@/lib/api";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
 import { competenciaLabel, competenciasSafra, mensagemErro, moeda } from "@/lib/format";
+import type { CentroCusto } from "@/lib/types";
 
 interface PendingEdit {
   itemOrcamentoId: string;
@@ -149,9 +163,18 @@ export default function Orcamento() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl lg:text-3xl font-bold text-foreground">Orçamento — Safra {safraId}</h1>
-        <p className="text-sm text-muted-foreground">Grade editável do orçado mês a mês</p>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-foreground">Orçamento — Safra {safraId}</h1>
+          <p className="text-sm text-muted-foreground">Grade editável do orçado mês a mês</p>
+        </div>
+        {editavel && (
+          <NovoItemOrcamento
+            safraId={safraId}
+            primeiraCompetencia={competencias[0]}
+            centros={centros.data ?? []}
+          />
+        )}
       </div>
 
       {congelada && (
@@ -258,5 +281,126 @@ export default function Orcamento() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function NovoItemOrcamento({
+  safraId,
+  primeiraCompetencia,
+  centros,
+}: {
+  safraId: string;
+  primeiraCompetencia: string | undefined;
+  centros: CentroCusto[];
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [codccusto, setCodccusto] = useState("");
+  const [nomecusto, setNomecusto] = useState("");
+  const [centroCustoId, setCentroCustoId] = useState("");
+  const [valor, setValor] = useState("");
+
+  function limpar() {
+    setCodccusto("");
+    setNomecusto("");
+    setCentroCustoId("");
+    setValor("");
+  }
+
+  const criar = useMutation({
+    mutationFn: () =>
+      criarItemOrcamento({
+        safraId,
+        codigoRmProjeto: codccusto.trim(),
+        descricao: nomecusto.trim(),
+        centroCustoId,
+        competencia: primeiraCompetencia!,
+        valor: Number(valor.replace(/\./g, "").replace(",", ".")) || 0,
+      }),
+    onSuccess: () => {
+      toast({ title: "Item de orçamento cadastrado." });
+      setOpen(false);
+      limpar();
+      qc.invalidateQueries({ queryKey: ["itens-orcamento", safraId] });
+      qc.invalidateQueries({ queryKey: ["item-acumulado"] });
+      qc.invalidateQueries({ queryKey: ["cc-acumulado"] });
+      qc.invalidateQueries({ queryKey: ["curva-mensal"] });
+      qc.invalidateQueries({ queryKey: ["itens-com-codigo-projeto"] });
+    },
+    onError: (e: unknown) =>
+      toast({ title: "Erro ao cadastrar", description: mensagemErro(e), variant: "destructive" }),
+  });
+
+  const podeSalvar =
+    codccusto.trim() && nomecusto.trim() && centroCustoId && valor.trim() && Boolean(primeiraCompetencia);
+
+  function handleOpenChange(v: boolean) {
+    setOpen(v);
+    if (!v) limpar();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button className="gap-1.5">
+          <Plus className="h-4 w-4" /> Novo item de orçamento
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cadastrar item de orçamento</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">CODCCUSTO (código do projeto no RM) *</label>
+            <Input
+              placeholder="Ex.: 99.00.1314"
+              value={codccusto}
+              onChange={(e) => setCodccusto(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">NOMECUSTO (descrição do item) *</label>
+            <Input
+              placeholder="Ex.: Reforma Carreadores"
+              value={nomecusto}
+              onChange={(e) => setNomecusto(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Área (centro de custo) *</label>
+            <Select value={centroCustoId} onValueChange={setCentroCustoId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a fazenda/unidade" />
+              </SelectTrigger>
+              <SelectContent>
+                {centros.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.nome} — {c.atividade}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Valor orçado *</label>
+            <Input placeholder="Ex.: 50000" value={valor} onChange={(e) => setValor(e.target.value)} />
+            <p className="text-xs text-muted-foreground mt-1">
+              Lançado em {competenciaLabel(primeiraCompetencia)}; redistribua entre os meses na grade
+              abaixo se precisar.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={() => criar.mutate()} disabled={!podeSalvar || criar.isPending}>
+            Cadastrar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
