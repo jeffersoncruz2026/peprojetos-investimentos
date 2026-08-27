@@ -53,10 +53,6 @@ function chaveDaArea(codigoCc: string, nomeCc: string): string {
   return codigoCc || nomeCc.toLowerCase().trim();
 }
 
-function chaveDoGrupo(linha: LinhaOrcamentoBruta): string {
-  return linha.idItem || `${linha.codigoCc}|${linha.nomeCc}|${linha.item.toLowerCase().trim()}`;
-}
-
 // item_orcamento só pode ser criado uma vez por item (não uma vez por
 // mês), então os itens precisam ficar agrupados para o cadastro — mas a
 // prévia exibida ao usuário lista cada linha da planilha individualmente,
@@ -77,7 +73,7 @@ function processarLinhas(
 
   const grupos = new Map<string, GrupoOrcamentoItem>();
   for (const linha of linhas) {
-    const chave = chaveDoGrupo(linha);
+    const chave = linha.chaveGrupo;
     let g = grupos.get(chave);
     if (!g) {
       const centroCustoExistente =
@@ -109,7 +105,7 @@ function processarLinhas(
   }
 
   const linhasPreview: LinhaPreview[] = linhas.map((linha) => {
-    const g = grupos.get(chaveDoGrupo(linha))!;
+    const g = grupos.get(linha.chaveGrupo)!;
     return {
       chaveGrupo: g.chave,
       codigoCc: linha.codigoCc,
@@ -196,13 +192,20 @@ export function ImportarOrcamentoDialog({
         }
       }
       let indiceSemCodigo = 0;
+      const codigosUsados = new Set<string>();
       for (const g of novos) {
         const centroCustoId = g.centroCustoExistente?.id ?? centrosCriados.get(g.chaveArea);
         if (!centroCustoId) throw new Error(`Centro de custo ${g.nomeCc} não pôde ser criado.`);
         indiceSemCodigo += 1;
+        // Duas linhas podem trazer o mesmo Código/CODCCUSTO por engano (ou
+        // nenhum) — item_orcamento.codigo é único, então desempata aqui em
+        // vez de deixar a violação estourar no meio do lote.
+        let codigo = g.idItem || g.codigoProjeto || `${g.chaveArea}#${indiceSemCodigo}`;
+        if (codigosUsados.has(codigo)) codigo = `${codigo}-${indiceSemCodigo}`;
+        codigosUsados.add(codigo);
         await criarItemOrcamentoComMeses({
           safraId,
-          codigo: g.idItem || g.codigoProjeto || `${g.chaveArea}#${indiceSemCodigo}`,
+          codigo,
           codigoRmProjeto: g.codigoProjeto || null,
           descricao: g.item,
           centroCustoId,
