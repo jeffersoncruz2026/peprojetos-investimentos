@@ -10,34 +10,46 @@ Vite + React + TypeScript + shadcn-ui + Tailwind + Supabase (Postgres + Auth).
 
 ## Configuração do banco (Supabase)
 
-1. Crie um projeto no [Supabase](https://supabase.com).
-2. No SQL Editor, rode **nesta ordem**:
-   - `supabase/sql/01_supabase_schema.sql` — tabelas, views e RLS.
-   - `supabase/sql/02_safra_aware_views.sql` — ajusta `v_item_mes`, `v_item_acumulado` para
-     expor `safra_id` e cria as funções `f_cc_acumulado(safra_id)` / `f_curva_mensal(safra_id)`,
-     necessárias para o seletor de safra do app funcionar corretamente (o schema original tem
-     `v_cc_acumulado` e `v_curva_mensal` fixos numa única safra).
-3. Carregue o orçado inicial: importe `supabase/sql/seed_orcamento_mensal.csv` numa tabela
-   temporária pelo Table Editor e rode o bloco de carga comentado no fim do
-   `01_supabase_schema.sql` (cria os 25 centros de custo, os 127 itens e o orçado mensal).
-4. (Opcional) Para o perfil GESTOR, crie usuários em Authentication → Users. Por padrão, todo
-   usuário autenticado é tratado como GESTOR; para deixar alguém como somente leitura, defina
-   `role: "LEITURA"` no `user_metadata` do usuário.
+O projeto já está conectado a um Supabase real via Lovable (projeto `tcpcnuremjbcrgunpftg`,
+veja `supabase/config.toml`), com o schema aplicado em
+`supabase/migrations/20260827112659_c1bffe06-0e4b-4c9f-a257-94c62b825b09.sql` — tabelas, views,
+as funções `f_cc_acumulado(safra_id)` / `f_curva_mensal(safra_id)` (necessárias para o seletor
+de safra) e RLS. Os arquivos em `supabase/sql/` são a referência original usada para gerar essa
+migração; não é preciso rodá-los de novo num projeto já conectado pelo Lovable.
+
+Falta só carregar os dados da safra 2026/2027 (a migração cria apenas o registro da safra):
+
+1. No SQL Editor do Supabase, importe `supabase/sql/seed_orcamento_mensal.csv` numa tabela
+   temporária pelo Table Editor.
+2. Rode o bloco de carga comentado no fim de `supabase/sql/01_supabase_schema.sql` (cria os 25
+   centros de custo, os 127 itens e o orçado mensal).
+
+Se você conectar este repositório a um Supabase novo do zero (fora do Lovable), rode primeiro
+`supabase/sql/01_supabase_schema.sql` e depois `supabase/sql/02_safra_aware_views.sql`, antes do
+passo de carga acima.
 
 ## Configuração do app
 
+O Lovable já injeta `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` no ambiente hospedado.
+Para rodar localmente:
+
 ```sh
 cp .env.example .env
-# preencha VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY com os dados do projeto Supabase
+# preencha VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY com os dados do projeto Supabase
 npm install
 npm run dev
 ```
 
 ## Perfis de acesso
 
-- **Sem login**: modo LEITURA — visualiza tudo, não edita.
-- **Logado (GESTOR)**: edita orçamento (com justificativa obrigatória por alteração), importa
-  o realizado do RM e resolve pendências de vínculo.
+Por padrão, o app libera acesso de **GESTOR sem exigir login** — edita orçamento (com
+justificativa obrigatória por alteração), importa o realizado do RM e resolve pendências de
+vínculo. As alterações nas tabelas de auditoria (`orcamento_revisao`, `importacao`) são
+atribuídas ao e-mail configurado em `GESTOR_PADRAO_EMAIL` (`src/lib/config.ts`).
+
+Para restringir o acesso no futuro (ex.: dar a alguém apenas leitura), use o login do
+Supabase Auth normalmente: um usuário autenticado com `role: "LEITURA"` no `user_metadata`
+passa a ver tudo em modo somente leitura.
 
 ## Telas
 

@@ -31,7 +31,7 @@ const SITUACAO_VARIANT: Record<LinhaRealizadoPreview["situacao"], "default" | "s
 };
 
 export default function ImportarRealizado() {
-  const { isGestor, session } = useAuth();
+  const { isGestor, usuarioAtual } = useAuth();
   const { safraId } = useSafra();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -106,7 +106,7 @@ export default function ImportarRealizado() {
       const importaveis = (preview ?? []).filter((l) => l.situacao !== "DUPLICADA");
       await confirmarImportacao({
         arquivo: arquivoNome ?? "arquivo",
-        usuario: session?.user.email ?? null,
+        usuario: usuarioAtual,
         linhas: importaveis.map((l) => ({
           safra_id: safraId,
           centro_custo_id: l.centroCustoId,
