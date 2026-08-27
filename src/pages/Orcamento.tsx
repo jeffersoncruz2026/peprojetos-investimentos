@@ -29,7 +29,7 @@ interface PendingEdit {
 
 export default function Orcamento() {
   const { safra, safraId } = useSafra();
-  const { isGestor } = useAuth();
+  const { isGestor, usuarioAtual } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -98,6 +98,7 @@ export default function Orcamento() {
         valor_anterior: edit.valorAnterior,
         valor_novo: edit.valorNovo,
         motivo,
+        usuario: usuarioAtual,
       });
       if (revisaoError) throw revisaoError;
     },

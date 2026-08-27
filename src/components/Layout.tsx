@@ -36,7 +36,7 @@ const NAV_ITEMS = [
 
 export default function Layout() {
   const { safras, safraId, setSafraId } = useSafra();
-  const { session, role, signOut } = useAuth();
+  const { session, role, usuarioAtual, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -83,18 +83,18 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t border-border space-y-1.5">
+          <p className="text-xs text-muted-foreground truncate px-1">
+            {role} · {usuarioAtual}
+          </p>
           {session ? (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground truncate px-1">{session.user.email}</p>
-              <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={signOut}>
-                <LogOut className="h-4 w-4" /> Sair ({role})
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={signOut}>
+              <LogOut className="h-4 w-4" /> Sair
+            </Button>
           ) : (
             <NavLink to="/login">
               <Button variant="outline" size="sm" className="w-full justify-start gap-2">
-                <LogIn className="h-4 w-4" /> Entrar (modo leitura)
+                <LogIn className="h-4 w-4" /> Entrar com outra conta
               </Button>
             </NavLink>
           )}
