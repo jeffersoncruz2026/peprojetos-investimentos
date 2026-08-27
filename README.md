@@ -26,10 +26,13 @@ Falta só carregar os dados da safra 2026/2027 (a migração cria apenas o regis
 3. **Rode `supabase/sql/03_projeto_rm.sql`** — adiciona `item_orcamento.codigo_rm_projeto`
    (usado para vincular o realizado, veja "Importação do realizado" abaixo) e corrige a ordem do
    motivo em `v_pendencias`. Sem esse arquivo, a tela Importar Realizado quebra.
+4. **Rode `supabase/sql/04_remanejamento.sql`** — cria a tabela `remanejamento` e a função
+   `f_remanejar_verba`, usadas pela tela Remanejamento de Verba. Sem esse arquivo, aquela tela
+   quebra.
 
 Se você conectar este repositório a um Supabase novo do zero (fora do Lovable), rode
 `supabase/sql/01_supabase_schema.sql`, depois `02_safra_aware_views.sql`, depois
-`03_projeto_rm.sql`, antes do passo de carga acima.
+`03_projeto_rm.sql`, depois `04_remanejamento.sql`, antes do passo de carga acima.
 
 ## Importação do realizado
 
@@ -103,6 +106,11 @@ passa a ver tudo em modo somente leitura.
   Atividade, Item, Competência, Valor Orçado`). CODCCUSTO é opcional; "Centro de Custo" pode ser
   só o nome (sem código próprio) — o vínculo com uma unidade já cadastrada é então feito pelo
   nome.
+- **Remanejamento de Verba** — move o orçado de um item para outro num mesmo mês (valor, mês e
+  motivo obrigatórios), respeitando o mesmo bloqueio de safra CONGELADA da grade de Orçamento.
+  Debita a origem e credita o destino de forma atômica (função `f_remanejar_verba` no banco),
+  grava o histórico por item em `orcamento_revisao` (mesma tabela usada pela grade) e mantém um
+  histórico próprio de remanejamentos na tela.
 - **Importar Realizado** — upload do extrato de custos por projeto do RM (.xlsx/.csv), preview
   com vinculadas/duplicadas/sem item antes de gravar.
 - **Pendências** — lançamentos sem item vinculado (vínculo em lote, aprendido para as próximas

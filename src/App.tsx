@@ -12,6 +12,7 @@ import CentrosCusto from "./pages/CentrosCusto";
 import CentroCustoDetalhe from "./pages/CentroCustoDetalhe";
 import ItemDetalhe from "./pages/ItemDetalhe";
 import Orcamento from "./pages/Orcamento";
+import RemanejamentoVerba from "./pages/RemanejamentoVerba";
 import ImportarRealizado from "./pages/ImportarRealizado";
 import Pendencias from "./pages/Pendencias";
 import Relatorios from "./pages/Relatorios";
@@ -37,6 +38,7 @@ const App = () => (
                   <Route path="/centros-custo/:id" element={<CentroCustoDetalhe />} />
                   <Route path="/itens/:id" element={<ItemDetalhe />} />
                   <Route path="/orcamento" element={<Orcamento />} />
+                  <Route path="/remanejamento" element={<RemanejamentoVerba />} />
                   <Route path="/importar" element={<ImportarRealizado />} />
                   <Route path="/pendencias" element={<Pendencias />} />
                   <Route path="/relatorios" element={<Relatorios />} />
